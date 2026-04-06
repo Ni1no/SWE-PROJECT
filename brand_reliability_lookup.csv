@@ -1,0 +1,49 @@
+brand_key,aliases,reliability_index,reliability_tier
+acura,acura,0.88,A
+alfa_romeo,alfa romeo;alfaromeo,0.62,C
+audi,audi,0.70,C
+bmw,bmw;bayerische motoren werke,0.67,C
+buick,buick,0.81,B
+byd,byd,0.77,B
+cadillac,cadillac,0.73,C
+chevrolet,chevrolet;chevy,0.77,B
+chrysler,chrysler,0.65,C
+citroen,citroen;citroën,0.68,C
+dacia,dacia,0.79,B
+dodge,dodge,0.66,C
+fiat,fiat,0.63,C
+ford,ford,0.77,B
+genesis,genesis,0.84,A
+gmc,gmc,0.76,B
+honda,honda,0.90,A
+hyundai,hyundai,0.85,A
+infiniti,infiniti,0.78,B
+jaguar,jaguar,0.61,C
+jeep,jeep,0.64,C
+kia,kia,0.84,A
+land_rover,land rover;landrover;range rover,0.60,C
+lexus,lexus,0.93,A
+lincoln,lincoln,0.74,B
+mazda,mazda,0.87,A
+mercedes_benz,mercedes;mercedes-benz;mercedes benz;mercedesbenz;mb,0.71,C
+mercury,mercury,0.73,C
+mini,mini,0.66,C
+mitsubishi,mitsubishi,0.80,B
+nissan,nissan,0.77,B
+oldsmobile,oldsmobile,0.71,C
+opel,opel;vauxhall,0.74,B
+peugeot,peugeot,0.73,C
+pontiac,pontiac,0.70,C
+porsche,porsche,0.68,C
+ram,ram;ram trucks,0.67,C
+renault,renault,0.67,C
+saturn,saturn,0.72,C
+seat,seat,0.75,B
+skoda,skoda;škoda,0.79,B
+subaru,subaru,0.86,A
+suzuki,suzuki,0.84,A
+tesla,tesla,0.65,C
+toyota,toyota;scion,0.92,A
+volkswagen,volkswagen;vw;v w,0.75,B
+volvo,volvo,0.78,B
+generic_unknown,unknown;other;generic,0.75,B

@@ -1,0 +1,83 @@
+metric_key,category,obd_mode,pid_hex,unit,data_type,maintenance_use,notes,example_value
+vehicle_identification_number,vehicle_info,09,02,,string,Link readings to correct service schedule and recalls; VIN decode yields year/make/model.,Mode 09 PID 02; not all ECUs expose full VIN.,1HGBH41JXMN109186
+calibration_id,vehicle_info,09,04,,string,Verify ECU/software version after reflash or repair.,Hex ASCII per SAE J1979.,ABCD1234
+ecu_name,vehicle_info,09,0A,,string,Identify which module is responding for multi-ECU diagnostics.,Per manufacturer implementation.,PCM
+obd_implementation_class,vehicle_info,01,1C,,encoded,Know which PIDs and behaviors to expect (OBD-II vs EOBD etc.).,Bit-mapped per J1979.,OBD-II CAR
+monitor_status_since_dtcs_cleared,live_engine,01,01,,bitfield,See which monitors are incomplete after repair (drive cycle).,Includes MIL status and readiness.,varies
+dtc_that_caused_freeze_frame,live_engine,01,02,,hex,Prioritize the fault that triggered freeze-frame data.,Two-byte DTC encoding.,P0301
+fuel_system_status,live_engine,01,03,,encoded,Detect open/closed loop issues affecting fuel trim and emissions service.,States A/B for banks.,Closed loop
+calculated_engine_load,live_engine,01,04,percent,float,High sustained load may correlate with air filter restriction or dragging brakes (context).,0-100%.,42.5
+engine_coolant_temperature,live_engine,01,05,degC,int,Overheating risk; thermostat/coolant service; head gasket concerns if abnormal with other signs.,Offset -40°C from byte.,90
+short_term_fuel_trim_bank1,live_engine,01,06,percent,float,Vacuum leaks dirty MAF injectors O2 sensor health (short-term correction).,-100 to 99.22%.,-2.3
+long_term_fuel_trim_bank1,live_engine,01,07,percent,float,Chronic fuel correction trend; maintenance for intake leaks fuel pressure filter.,-100 to 99.22%.,4.7
+short_term_fuel_trim_bank2,live_engine,01,08,percent,float,Same as bank1 for V engines.,-100 to 99.22%.,0.0
+long_term_fuel_trim_bank2,live_engine,01,09,percent,float,Same as bank1 for V engines.,-100 to 99.22%.,1.2
+fuel_pressure_gauge,live_engine,01,0A,kPa,int,Low pressure may indicate pump filter or regulator service.,0-765 kPa.,380
+intake_manifold_absolute_pressure,live_engine,01,0B,kPa,int,Vacuum/load context for misfire and trim diagnosis.,0-255 kPa.,35
+engine_rpm,live_engine,01,0C,rpm,float,Idle stability misfire detection rev limiter behavior.,0-16383.75 rpm.,750
+vehicle_speed,live_engine,01,0D,km/h,int,Correlate conditions with faults; driver habit context for brakes/tires.,0-255 km/h.,0
+timing_advance,live_engine,01,0E,deg,float,Knock retard and timing issues (with knock if available).,Relative to #1 cylinder.,12
+intake_air_temperature,live_engine,01,0F,degC,int,IAT affects fuel trim and intercooler/boost diagnosis (turbo).,Offset -40°C.,28
+maf_air_flow_rate,live_engine,01,10,g/s,float,Air filter clogging MAF contamination throttle body issues.,0-655.35 g/s.,8.4
+throttle_position,live_engine,01,11,percent,float,Sticking TB electronic throttle calibration idle issues.,0-100%.,8.2
+commanded_secondary_air_status,live_engine,01,12,,encoded,Emissions system state for AIR pump/valve faults.,Secondary air.,Upstream
+oxygen_sensors_present_2banks,live_engine,01,13,,bitfield,Know which O2 sensors exist for heater and aging tests.,Bitmap.,varies
+o2_sensor_voltage_bank1_sensor1,live_engine,01,14,V,mixed,Pre-cat O2 switching rich/lean; catalyst and fuel control health.,Voltage or equivalence ratio per encoding.,0.45
+o2_sensor_voltage_bank1_sensor2,live_engine,01,15,V,mixed,Post-cat monitoring for catalyst efficiency.,Same as 0x14 pattern.,0.72
+o2_sensor_voltage_bank1_sensor3,live_engine,01,16,V,mixed,Additional sensor if present.,Same.,0.55
+o2_sensor_voltage_bank1_sensor4,live_engine,01,17,V,mixed,Additional sensor if present.,Same.,0.51
+o2_sensor_voltage_bank2_sensor1,live_engine,01,18,V,mixed,Bank2 pre-cat.,Same.,0.48
+o2_sensor_voltage_bank2_sensor2,live_engine,01,19,V,mixed,Bank2 post-cat.,Same.,0.69
+obd_standards_vehicle_complies_with,live_engine,01,1C,,encoded,Protocol expectations.,See J1979 table.,OBD-II
+auxiliary_input_status,live_engine,01,1E,,bitfield,Power take-off clutch switch etc. (light commercial).,Varies.,off
+engine_run_time,live_engine,01,1F,seconds,int,Hours-like wear proxy; correlate with oil life if no oil life monitor.,0-65535 s.,1842
+distance_traveled_with_mil_on,live_engine,01,21,km,int,How long driver has run with check engine; urgency and compliance.,0-65535 km.,0
+fuel_rail_pressure_relative_to_manifold,live_engine,01,22,kPa,int,Direct injection / returnless systems fuel diagnostics.,0-5177.265 kPa.,420
+fuel_rail_pressure_direct_injection,live_engine,01,23,kPa,int,High-pressure rail diagnostics.,0-655350 kPa.,5000
+commanded_egr,live_engine,01,2C,percent,float,EGR system operation and clogging context.,0-100%.,5
+egr_error,live_engine,01,2D,percent,float,EGR performance vs commanded.,-100 to 99.22%.,0.5
+commanded_evaporative_purge,live_engine,01,2E,percent,float,EVAP leak detection and purge valve health.,0-100%.,0
+fuel_tank_level_input,live_engine,01,2F,percent,float,Low fuel warnings; EVAP tests often need fuel level band.,0-100%.,62
+warm_ups_since_dtcs_cleared,live_engine,01,30,count,int,Drive cycle progress after clearing codes.,0-255.,12
+distance_since_dtcs_cleared,live_engine,01,31,km,int,How far since clear; monitors may not be ready yet.,0-65535 km.,240
+evap_system_vapor_pressure,live_engine,01,32,Pa,float,Small/large leak detection context.,-8192 to 8191.75 Pa.,-12
+barometric_pressure,live_engine,01,33,kPa,int,Altitude correction for load and boost diagnosis.,0-255 kPa.,101
+o2_sensor_current_bank1_sensor1,live_engine,01,34,mA,mixed,Wideband equivalence ratio where supported.,Scaled per J1979.,0.0
+catalyst_temperature_bank1_sensor1,live_engine,01,3C,degC,float,Over-temp risks; catalyst efficiency and misfire damage.,-40 to 6513.5°C.,420
+catalyst_temperature_bank2_sensor1,live_engine,01,3E,degC,float,Bank2 catalyst temp.,Same range.,415
+monitor_status_this_drive_cycle,live_engine,01,41,,bitfield,Current cycle readiness snapshot.,Bitmap.,varies
+control_module_voltage,live_engine,01,42,V,float,Battery alternator health; low voltage causes erratic sensors and codes.,0-65.535 V.,14.1
+absolute_load_value,live_engine,01,43,percent,float,More accurate load than calculated load on some vehicles.,0-25700%.,45
+fuel_air_commanded_equivalence_ratio,live_engine,01,44,ratio,float,Lambda target; tuning and leak diagnosis context.,0-1.999.,1.000
+relative_throttle_position,live_engine,01,45,percent,float,Pedal vs throttle correlation (ETC).,0-100%.,9
+ambient_air_temperature,live_engine,01,46,degC,int,Climate context for IAT/cooling diagnosis.,Offset -40°C.,22
+absolute_throttle_position_b,live_engine,01,47,percent,float,Multi-position throttle sensors.,0-100%.,10
+absolute_throttle_position_c,live_engine,01,48,percent,float,Multi-position throttle sensors.,0-100%.,10
+accelerator_pedal_position_d,live_engine,01,49,percent,float,APP sensor redundancy; limp mode diagnosis.,0-100%.,12
+accelerator_pedal_position_e,live_engine,01,4A,percent,float,Second APP track.,0-100%.,12
+accelerator_pedal_position_f,live_engine,01,4B,percent,float,Third APP track if present.,0-100%.,0
+commanded_throttle_actuator,live_engine,01,4C,percent,float,ETC commanded vs actual.,0-100%.,8
+time_run_with_mil_on,live_engine,01,4D,minutes,int,Extended MIL duration tracking.,0-65535 min.,0
+time_since_trouble_codes_cleared,live_engine,01,4E,minutes,int,How long since clear.,0-65535 min.,2880
+max_values_for_equivalence_ratio_o2_voltage_o2_current_intake_map,live_engine,01,4F,,various,Calibration/scaling info for other PIDs.,Composite response.,n/a
+max_air_flow_rate_from_maf,live_engine,01,50,g/s,float,MAF range sanity check.,0-65535 g/s.,400
+fuel_type,live_engine,01,51,,encoded,Service for fuel system and additives.,Enumeration.,Gasoline
+ethanol_fuel_percent,live_engine,01,52,percent,float,Flex-fuel maintenance and trim expectations.,0-100%.,10
+absolute_evap_system_vapor_pressure,live_engine,01,53,kPa,float,EVAP diagnostics (some vehicles).,Scaled per J1979.,0.1
+engine_oil_temperature,live_engine,01,5C,degC,int,Oil change interval thermal stress (if supported).,Offset -40°C.,95
+engine_fuel_rate,live_engine,01,5E,L/h,float,Fuel economy and leak context where supported.,0-3276.75 L/h.,1.2
+emission_requirements_vehicle_is_designed_for,live_engine,01,5F,,encoded,Regulatory tier context.,Per J1979.,n/a
+diagnostic_trouble_codes,dtc,03,,,list,Primary maintenance alerts; tie to service bulletins and priority.,Mode 03 returns stored DTCs; Mode 07 pending; Mode 0A permanent.,P0420;P0171
+pending_diagnostic_trouble_codes,dtc,07,,,list,Intermittent faults before MIL.,Mode 07.,P0300
+permanent_diagnostic_trouble_codes,dtc,0A,,,list,Cannot be cleared until repaired and criteria met (some regions).,Mode 0A.,none
+freeze_frame_snapshot,dtc,02,,,record,Captured sensor state when MIL set; speeds root cause.,Mode 02; which PID set varies.,see ECU
+mil_status_indicator,live_engine,01,01,mil_on_off,bool,User-facing warning; compliance and safety.,Derived from monitor status PID 01 bit A7.,on
+readiness_monitors_complete,live_engine,01,01,,bitfield,Pre-inspection OBD test readiness.,Same PID 01.,varies
+odometer_user_reported,user_input,,,mi,int,Maintenance intervals when OBD odometer unavailable (miles).,User or telematics.,90000
+vehicle_age_years,user_input,,,years,int,Service factor input; rubber/plastic/battery/coolant aging.,From model year or registration.,8
+vehicle_make,user_input,,,,string,Brand reliability lookup key.,Normalized string.,Toyota
+vehicle_model,user_input,,,,string,Model-specific service intervals.,String.,Camry
+model_year,user_input,,,year,int,Recall and interval templates.,Four-digit year.,2018
+brand_reliability_index,user_derived,,,0_to_1,float,Normalized reliability (1=best); from your own table or third-party scores.,Join vehicle_make to brand_reliability_lookup.csv on brand_key or aliases (casefold and strip). Fallback: generic_unknown row.,0.85
+service_factor,user_derived,,,dimensionless,float,Scales recommended service urgency/interval vs baseline; combines age stress and reliability (intervals in miles in app).,"Formula: service_factor = (1 + age_years * k_age) / brand_reliability_index; cap e.g. 0.5-2.0; tune k_age (e.g. 0.04). Higher = more frequent service recommended.",1.18
+service_factor_formula_notes,user_derived,,,,string,Document tuning in your app; not an OBD PID.,k_age weights how fast aging increases service need; reliability divides baseline interval (reliable brands stretch slightly unreliable tighten). Example baseline_oil_mi = 6214 / service_factor (app uses miles). Brand list: brand_reliability_lookup.csv.,see app config
