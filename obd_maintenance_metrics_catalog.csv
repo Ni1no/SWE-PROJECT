@@ -1,5 +1,5 @@
 metric_key,category,obd_mode,pid_hex,unit,data_type,maintenance_use,notes,example_value
-vehicle_identification_number,vehicle_info,09,02,,string,Link readings to correct service schedule and recalls; VIN decode yields year/make/model.,Mode 09 PID 02; not all ECUs expose full VIN.,1HGBH41JXMN109186
+vehicle_identification_number,vehicle_info,09,02,,string,REQ-02 NHTSA vPIC decode (flat CSV like VINData.csv) yields Make/Model Year for advisor; OBD Mode 09 PID 02 when available.,Mode 09 PID 02; not all ECUs expose full VIN.,1HGBH41JXMN109186
 calibration_id,vehicle_info,09,04,,string,Verify ECU/software version after reflash or repair.,Hex ASCII per SAE J1979.,ABCD1234
 ecu_name,vehicle_info,09,0A,,string,Identify which module is responding for multi-ECU diagnostics.,Per manufacturer implementation.,PCM
 obd_implementation_class,vehicle_info,01,1C,,encoded,Know which PIDs and behaviors to expect (OBD-II vs EOBD etc.).,Bit-mapped per J1979.,OBD-II CAR
@@ -73,11 +73,11 @@ permanent_diagnostic_trouble_codes,dtc,0A,,,list,Cannot be cleared until repaire
 freeze_frame_snapshot,dtc,02,,,record,Captured sensor state when MIL set; speeds root cause.,Mode 02; which PID set varies.,see ECU
 mil_status_indicator,live_engine,01,01,mil_on_off,bool,User-facing warning; compliance and safety.,Derived from monitor status PID 01 bit A7.,on
 readiness_monitors_complete,live_engine,01,01,,bitfield,Pre-inspection OBD test readiness.,Same PID 01.,varies
-odometer_user_reported,user_input,,,mi,int,Maintenance intervals when OBD odometer unavailable (miles).,User or telematics.,90000
-vehicle_age_years,user_input,,,years,int,Service factor input; rubber/plastic/battery/coolant aging.,From model year or registration.,8
-vehicle_make,user_input,,,,string,Brand reliability lookup key.,Normalized string.,Toyota
-vehicle_model,user_input,,,,string,Model-specific service intervals.,String.,Camry
-model_year,user_input,,,year,int,Recall and interval templates.,Four-digit year.,2018
-brand_reliability_index,user_derived,,,0_to_1,float,Normalized reliability (1=best); from your own table or third-party scores.,Join vehicle_make to brand_reliability_lookup.csv on brand_key or aliases (casefold and strip). Fallback: generic_unknown row.,0.85
-service_factor,user_derived,,,dimensionless,float,Scales recommended service urgency/interval vs baseline; combines age stress and reliability (intervals in miles in app).,"Formula: service_factor = (1 + age_years * k_age) / brand_reliability_index; cap e.g. 0.5-2.0; tune k_age (e.g. 0.04). Higher = more frequent service recommended.",1.18
-service_factor_formula_notes,user_derived,,,,string,Document tuning in your app; not an OBD PID.,k_age weights how fast aging increases service need; reliability divides baseline interval (reliable brands stretch slightly unreliable tighten). Example baseline_oil_mi = 6214 / service_factor (app uses miles). Brand list: brand_reliability_lookup.csv.,see app config
+odometer_user_reported,user_input,,,mi,int,REQ-01 current mileage for vehicle profile; used with maintenance records for REQ-07 due calculations.,User or telematics.,90000
+vehicle_age_years,user_input,,,years,int,Service factor input for REQ-07 mileage intervals in advisor; from model year or registration.,From model year or registration.,8
+vehicle_make,user_input,,,,string,REQ-01 make; joins brand_reliability_lookup for reminder interval scaling with obd_maintenance_advisor.py.,Normalized string.,Toyota
+vehicle_model,user_input,,,,string,REQ-01 model; matches ServiceContext.vehicle_model and NHTSA Model.,String.,Camry
+model_year,user_input,,,year,int,REQ-01 model year; matches ServiceContext.model_year and NHTSA Model Year.,Four-digit year.,2018
+brand_reliability_index,user_derived,,,0_to_1,float,Normalized reliability (1=best) for REQ-07 interval scaling.,Join vehicle_make to brand_reliability_lookup.csv on brand_key or aliases (casefold and strip). Fallback: generic_unknown row.,0.85
+service_factor,user_derived,,,dimensionless,float,REQ-07 scales manufacturer/default mileage interval; combines age and brand_reliability_index.,"Formula: service_factor = (1 + age_years * k_age) / brand_reliability_index; cap e.g. 0.5-2.0; tune k_age (e.g. 0.04). Higher = shorter mileage interval.",1.18
+service_factor_formula_notes,user_derived,,,,string,REQ-07/REQ-09 backend; not an OBD PID.,Glossary oil example 5000 mi baseline at service_factor 1.0 until REQ-02 NHTSA schedule overrides. REQ-08 due-soon uses ~500 mi window in obd_maintenance_advisor.py (mileage side). Brand list: brand_reliability_lookup.csv.,see app config
