@@ -8,9 +8,11 @@ import {
   ScrollView,
   Alert,
   Keyboard,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAppData } from './data-context';
+import { decodeVinWithNhtsa, validateVinFormat } from './nhtsa-vin';
 
 export default function AddVehicleScreen() {
   const router = useRouter();
@@ -21,6 +23,33 @@ export default function AddVehicleScreen() {
   const [model, setModel] = useState('');
   const [mileage, setMileage] = useState('');
   const [vin, setVin] = useState('');
+  const [vinLookupLoading, setVinLookupLoading] = useState(false);
+
+  const handleVinLookup = async () => {
+    const fmt = validateVinFormat(vin);
+    if (fmt) {
+      Alert.alert('VIN', fmt);
+      return;
+    }
+    setVinLookupLoading(true);
+    try {
+      const decoded = await decodeVinWithNhtsa(vin);
+      if (decoded.error) {
+        Alert.alert('NHTSA lookup', decoded.error);
+        return;
+      }
+      setYear(decoded.year);
+      setMake(decoded.make);
+      setModel(decoded.model);
+      Alert.alert(
+        'Vehicle loaded (REQ-02)',
+        'Year, make, and model were filled from NHTSA. Mileage reminders still use the app’s interval logic until you log services.'
+      );
+    } finally {
+      setVinLookupLoading(false);
+      Keyboard.dismiss();
+    }
+  };
 
   const handleSave = () => {
     if (!year.trim()) {
@@ -129,13 +158,29 @@ export default function AddVehicleScreen() {
           <Text style={styles.label}>VIN (Optional)</Text>
           <TextInput
             style={styles.input}
-            placeholder="Enter VIN"
+            placeholder="17-character VIN"
             placeholderTextColor="#9CA3AF"
             value={vin}
             onChangeText={setVin}
+            autoCapitalize="characters"
             returnKeyType="done"
             onSubmitEditing={Keyboard.dismiss}
           />
+          <TouchableOpacity
+            style={[styles.lookupBtn, vinLookupLoading && styles.lookupBtnDisabled]}
+            onPress={handleVinLookup}
+            disabled={vinLookupLoading}
+          >
+            {vinLookupLoading ? (
+              <ActivityIndicator color="#2563EB" />
+            ) : (
+              <Text style={styles.lookupBtnText}>Decode VIN (NHTSA)</Text>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.helperVin}>
+            Fills year, make, and model from the official NHTSA decoder. Add mileage
+            yourself.
+          </Text>
 
           <View style={styles.buttonRow}>
             <TouchableOpacity
@@ -251,5 +296,28 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
+  },
+  lookupBtn: {
+    minHeight: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#2563EB',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  lookupBtnDisabled: {
+    opacity: 0.6,
+  },
+  lookupBtnText: {
+    color: '#2563EB',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  helperVin: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 8,
+    lineHeight: 17,
   },
 });

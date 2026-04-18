@@ -5,13 +5,49 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAppData } from '../data-context';
+import type { ServiceRecord } from '../data-context';
 
 export default function LogScreen() {
   const router = useRouter();
-  const { services } = useAppData();
+  const { services, deleteService } = useAppData();
+
+  const onRecordPress = (record: ServiceRecord) => {
+    Alert.alert(record.service, `${record.vehicle}\n${record.date} • ${record.mileage}`, [
+      {
+        text: 'Edit',
+        onPress: () =>
+          router.push({
+            pathname: '/edit-service',
+            params: { id: record.id },
+          }),
+      },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => confirmDelete(record),
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const confirmDelete = (record: ServiceRecord) => {
+    Alert.alert(
+      'Delete this record?',
+      'This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => deleteService(record.id),
+        },
+      ]
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -51,6 +87,7 @@ export default function LogScreen() {
                 index !== services.length - 1 && styles.recordBorder,
               ]}
               activeOpacity={0.8}
+              onPress={() => onRecordPress(record)}
             >
               <View style={styles.iconWrap}>
                 <Text style={styles.iconText}>🛠</Text>

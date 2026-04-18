@@ -6,8 +6,11 @@ import {
   ScrollView,
   TouchableOpacity,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 
 export default function ProfileScreen() {
+  const router = useRouter();
+
   return (
     <View style={styles.container}>
       <ScrollView
@@ -36,7 +39,11 @@ export default function ProfileScreen() {
             <Text style={styles.chevron}>›</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.rowButton} activeOpacity={0.85}>
+          <TouchableOpacity
+            style={styles.rowButton}
+            activeOpacity={0.85}
+            onPress={() => router.push('/forgot-password')}
+          >
             <Text style={styles.rowButtonText}>Reset Password</Text>
             <Text style={styles.chevron}>›</Text>
           </TouchableOpacity>

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import React, { createContext, useContext, useState } from 'react';
 import {
   getDueText,
   getReminderStatus,
@@ -33,6 +33,10 @@ export type ServiceRecord = {
   urgency: ReminderStatus;
 };
 
+function parseMileageDisplay(m: string): number {
+  return Number(String(m).replace(/,/g, '').replace(/[^\d.]/g, '')) || 0;
+}
+
 type AppDataContextType = {
   vehicles: Vehicle[];
   services: ServiceRecord[];
@@ -49,6 +53,16 @@ type AppDataContextType = {
     date: string;
     mileage: string;
   }) => void;
+  updateService: (
+    id: string,
+    service: {
+      vehicle: string;
+      serviceType: string;
+      date: string;
+      mileage: string;
+    }
+  ) => void;
+  deleteService: (id: string) => void;
 };
 
 const AppDataContext = createContext<AppDataContextType | undefined>(undefined);
@@ -128,6 +142,67 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const [vehicles, setVehicles] = useState<Vehicle[]>(initialVehicles);
   const [services, setServices] = useState<ServiceRecord[]>(initialServices);
 
+  const syncVehicleFromServices = (
+    vehicleName: string,
+    servicesList: ServiceRecord[]
+  ) => {
+    const forV = servicesList.filter((s) => s.vehicle === vehicleName);
+    if (forV.length === 0) return;
+
+    setVehicles((prev) => {
+      const vIdx = prev.findIndex((v) => v.name === vehicleName);
+      if (vIdx === -1) return prev;
+
+      const best = forV.reduce((a, b) =>
+        parseMileageDisplay(b.mileage) > parseMileageDisplay(a.mileage) ? b : a
+      );
+      const currentMileageNumber = parseMileageDisplay(best.mileage);
+      const intervalMiles = getServiceIntervalMiles(best.service);
+      const dueMileageNumber = currentMileageNumber + intervalMiles;
+      const urgency = getReminderStatus(
+        currentMileageNumber,
+        dueMileageNumber
+      );
+      const dueText = getDueText(currentMileageNumber, dueMileageNumber);
+
+      const lastServiceMiles: Record<string, number> = {};
+      for (const s of forV) {
+        const sid = uiServiceTypeToAdvisorId(s.service);
+        const miles = parseMileageDisplay(s.mileage);
+        if (!lastServiceMiles[sid] || miles > lastServiceMiles[sid]) {
+          lastServiceMiles[sid] = miles;
+        }
+      }
+
+      const vehicle = prev[vIdx];
+      const mileageDisplay = best.mileage.includes('mi')
+        ? best.mileage
+        : `${String(best.mileage).replace(/,/g, '')} mi`;
+
+      const updated: Vehicle = {
+        ...vehicle,
+        mileage: mileageDisplay,
+        currentMileageNumber,
+        lastServiceMiles,
+        nextService: best.service,
+        dueMileageNumber,
+        dueText,
+        urgency,
+      };
+
+      queueMicrotask(() => {
+        fetchAdvisorPatchForVehicle(updated).then((patch) => {
+          if (!patch) return;
+          setVehicles((p) =>
+            p.map((x) => (x.id === updated.id ? { ...x, ...patch } : x))
+          );
+        });
+      });
+
+      return prev.map((v, i) => (i === vIdx ? updated : v));
+    });
+  };
+
   const addVehicle = (vehicle: {
     year: string;
     make: string;
@@ -185,7 +260,6 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     const intervalMiles = getServiceIntervalMiles(service.serviceType);
     const dueMileageNumber = currentMileageNumber + intervalMiles;
     const urgency = getReminderStatus(currentMileageNumber, dueMileageNumber);
-    const advisorServiceId = uiServiceTypeToAdvisorId(service.serviceType);
 
     const newService: ServiceRecord = {
       id: Date.now().toString(),
@@ -196,50 +270,76 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       urgency,
     };
 
-    setServices((prev) => [newService, ...prev]);
-
-    setVehicles((prev) =>
-      prev.map((vehicle) => {
-        if (vehicle.name !== service.vehicle) return vehicle;
-        const lastServiceMiles = {
-          ...(vehicle.lastServiceMiles ?? {}),
-          [advisorServiceId]: currentMileageNumber,
-        };
-        const updated: Vehicle = {
-          ...vehicle,
-          mileage: `${service.mileage} mi`,
-          lastServiceMiles,
-          nextService: service.serviceType,
-          dueText: getDueText(currentMileageNumber, dueMileageNumber),
-          urgency,
-          currentMileageNumber,
-          dueMileageNumber,
-        };
-        queueMicrotask(() => {
-          fetchAdvisorPatchForVehicle(updated).then((patch) => {
-            if (!patch) return;
-            setVehicles((p) =>
-              p.map((x) => (x.id === updated.id ? { ...x, ...patch } : x))
-            );
-          });
-        });
-        return updated;
-      })
-    );
+    setServices((prev) => {
+      const next = [newService, ...prev];
+      queueMicrotask(() => syncVehicleFromServices(service.vehicle, next));
+      return next;
+    });
   };
 
-  const value = useMemo(
-    () => ({
-      vehicles,
-      services,
-      addVehicle,
-      addService,
-    }),
-    [vehicles, services]
-  );
+  const updateService = (
+    id: string,
+    service: {
+      vehicle: string;
+      serviceType: string;
+      date: string;
+      mileage: string;
+    }
+  ) => {
+    const currentMileageNumber = Number(service.mileage.replace(/,/g, ''));
+    const intervalMiles = getServiceIntervalMiles(service.serviceType);
+    const dueMileageNumber = currentMileageNumber + intervalMiles;
+    const urgency = getReminderStatus(currentMileageNumber, dueMileageNumber);
+
+    setServices((prev) => {
+      const old = prev.find((s) => s.id === id);
+      const oldVehicle = old?.vehicle;
+      const next = prev.map((s) =>
+        s.id === id
+          ? {
+              ...s,
+              service: service.serviceType,
+              vehicle: service.vehicle,
+              date: service.date,
+              mileage: `${service.mileage} mi`,
+              urgency,
+            }
+          : s
+      );
+      queueMicrotask(() => {
+        syncVehicleFromServices(service.vehicle, next);
+        if (oldVehicle && oldVehicle !== service.vehicle) {
+          syncVehicleFromServices(oldVehicle, next);
+        }
+      });
+      return next;
+    });
+  };
+
+  const deleteService = (id: string) => {
+    setServices((prev) => {
+      const victim = prev.find((s) => s.id === id);
+      const next = prev.filter((s) => s.id !== id);
+      if (victim) {
+        queueMicrotask(() => syncVehicleFromServices(victim.vehicle, next));
+      }
+      return next;
+    });
+  };
 
   return (
-    <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>
+    <AppDataContext.Provider
+      value={{
+        vehicles,
+        services,
+        addVehicle,
+        addService,
+        updateService,
+        deleteService,
+      }}
+    >
+      {children}
+    </AppDataContext.Provider>
   );
 }
 

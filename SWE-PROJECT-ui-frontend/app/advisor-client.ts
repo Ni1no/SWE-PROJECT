@@ -136,17 +136,18 @@ async function postNextMaintenance(
 }
 
 /** Build REQ-01-style context for Python advisor. */
+export type AdvisorVehiclePatch = Partial<{
+  nextService: string;
+  dueText: string;
+  urgency: ReminderStatus;
+  dueMileageNumber: number;
+  lastServiceMiles: Record<string, number>;
+}>;
+
 export async function fetchAdvisorPatchForVehicle(
   vehicle: VehicleAdvisorSnapshot,
   options?: { year?: string; make?: string; model?: string }
-): Promise<
-  Partial<
-    Pick<
-      Vehicle,
-      'nextService' | 'dueText' | 'urgency' | 'dueMileageNumber' | 'lastServiceMiles'
-    >
-  > | null
-> {
+): Promise<AdvisorVehiclePatch | null> {
   const refYear = new Date().getFullYear();
   const fromForm =
     options?.year && options?.make && options?.model

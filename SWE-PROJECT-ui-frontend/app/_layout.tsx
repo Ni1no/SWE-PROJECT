@@ -33,6 +33,21 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen
+            name="edit-service"
+            options={{
+              title: 'Edit Record',
+              presentation: 'modal',
+            }}
+          />
+          <Stack.Screen
+            name="forgot-password"
+            options={{ title: 'Reset password', presentation: 'modal' }}
+          />
+          <Stack.Screen
+            name="reset-password"
+            options={{ title: 'New password', presentation: 'modal' }}
+          />
+          <Stack.Screen
             name="modal"
             options={{ presentation: 'modal', title: 'Modal' }}
           />
