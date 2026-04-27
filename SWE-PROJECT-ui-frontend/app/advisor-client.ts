@@ -26,7 +26,10 @@ export type AdvisorNextRow = {
   urgency: AdvisorUrgency;
   service_factor: number;
   brand_reliability_index: number;
+  reliability_tier: string;
   matched_brand_key: string;
+  importance_score: number;
+  importance_label: string;
 };
 
 function defaultBaseUrl(): string {
@@ -45,6 +48,14 @@ export function serviceIdToDisplayName(serviceId: string): string {
   switch (serviceId) {
     case 'engine_oil_and_filter':
       return 'Oil Change';
+    case 'tire_rotation':
+      return 'Tire Rotation';
+    case 'brake_inspection':
+      return 'Brake Inspection';
+    case 'battery_check':
+      return 'Battery Check';
+    case 'air_filter_replacement':
+      return 'Air Filter Replacement';
     case 'engine_air_filter':
       return 'Air Filter Replacement';
     case 'cabin_air_filter':
@@ -66,8 +77,14 @@ export function uiServiceTypeToAdvisorId(serviceType: string): string {
   switch (serviceType) {
     case 'Oil Change':
       return 'engine_oil_and_filter';
+    case 'Tire Rotation':
+      return 'tire_rotation';
+    case 'Brake Inspection':
+      return 'brake_inspection';
+    case 'Battery Check':
+      return 'battery_check';
     case 'Air Filter Replacement':
-      return 'engine_air_filter';
+      return 'air_filter_replacement';
     case 'Cabin Air Filter':
       return 'cabin_air_filter';
     case 'Spark Plugs':
@@ -135,6 +152,20 @@ async function postNextMaintenance(
   }
 }
 
+export async function isAdvisorReachable(): Promise<boolean> {
+  const probe = await postNextMaintenance({
+    context: {
+      odometer_miles: 10000,
+      vehicle_age_years: 5,
+      vehicle_make: 'Toyota',
+      vehicle_model: 'Camry',
+      model_year: 2020,
+      last_service_miles: { engine_oil_and_filter: 5000 },
+    },
+  });
+  return !!probe;
+}
+
 /** Build REQ-01-style context for Python advisor. */
 export type AdvisorVehiclePatch = Partial<{
   nextService: string;
@@ -142,6 +173,9 @@ export type AdvisorVehiclePatch = Partial<{
   urgency: ReminderStatus;
   dueMileageNumber: number;
   lastServiceMiles: Record<string, number>;
+  advisorImportanceScore: number;
+  advisorImportanceLabel: string;
+  reliabilityTier: string;
 }>;
 
 export async function fetchAdvisorPatchForVehicle(
@@ -164,7 +198,7 @@ export async function fetchAdvisorPatchForVehicle(
   const lastServiceMiles =
     vehicle.lastServiceMiles && Object.keys(vehicle.lastServiceMiles).length > 0
       ? vehicle.lastServiceMiles
-      : { engine_oil_and_filter: vehicle.currentMileageNumber };
+      : {};
 
   const adv = await postNextMaintenance({
     context: {
@@ -184,5 +218,8 @@ export async function fetchAdvisorPatchForVehicle(
     urgency: mapAdvisorUrgencyToReminderStatus(adv.urgency),
     dueMileageNumber: Math.round(adv.next_due_at_miles),
     lastServiceMiles,
+    advisorImportanceScore: Math.round(adv.importance_score),
+    advisorImportanceLabel: adv.importance_label,
+    reliabilityTier: adv.reliability_tier,
   };
 }

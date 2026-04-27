@@ -1,12 +1,5 @@
-import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
-} from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAppData } from '../data-context';
 import type { ServiceRecord } from '../data-context';
@@ -14,24 +7,25 @@ import type { ServiceRecord } from '../data-context';
 export default function LogScreen() {
   const router = useRouter();
   const { services, deleteService } = useAppData();
+  const [activeFilter, setActiveFilter] = useState<'all' | 'oil' | 'tires' | 'brakes'>('all');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const filteredServices = useMemo(() => {
+    if (activeFilter === 'all') return services;
+    const keywordByFilter = {
+      oil: ['oil'],
+      tires: ['tire', 'tyre', 'rotation', 'wheel'],
+      brakes: ['brake'],
+    } as const;
+    const keys = keywordByFilter[activeFilter];
+    return services.filter((r) => {
+      const s = r.service.toLowerCase();
+      return keys.some((k) => s.includes(k));
+    });
+  }, [services, activeFilter]);
 
   const onRecordPress = (record: ServiceRecord) => {
-    Alert.alert(record.service, `${record.vehicle}\n${record.date} • ${record.mileage}`, [
-      {
-        text: 'Edit',
-        onPress: () =>
-          router.push({
-            pathname: '/edit-service',
-            params: { id: record.id },
-          }),
-      },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => confirmDelete(record),
-      },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+    setExpandedId((prev) => (prev === record.id ? null : record.id));
   };
 
   const confirmDelete = (record: ServiceRecord) => {
@@ -61,50 +55,107 @@ export default function LogScreen() {
         </Text>
 
         <View style={styles.filterRow}>
-          <TouchableOpacity style={styles.activeChip}>
-            <Text style={styles.activeChipText}>All</Text>
+          <TouchableOpacity
+            style={activeFilter === 'all' ? styles.activeChip : styles.chip}
+            onPress={() => setActiveFilter('all')}
+          >
+            <Text style={activeFilter === 'all' ? styles.activeChipText : styles.chipText}>All</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.chip}>
-            <Text style={styles.chipText}>Oil</Text>
+          <TouchableOpacity
+            style={activeFilter === 'oil' ? styles.activeChip : styles.chip}
+            onPress={() => setActiveFilter('oil')}
+          >
+            <Text style={activeFilter === 'oil' ? styles.activeChipText : styles.chipText}>Oil</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.chip}>
-            <Text style={styles.chipText}>Tires</Text>
+          <TouchableOpacity
+            style={activeFilter === 'tires' ? styles.activeChip : styles.chip}
+            onPress={() => setActiveFilter('tires')}
+          >
+            <Text style={activeFilter === 'tires' ? styles.activeChipText : styles.chipText}>Tires</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.chip}>
-            <Text style={styles.chipText}>Brakes</Text>
+          <TouchableOpacity
+            style={activeFilter === 'brakes' ? styles.activeChip : styles.chip}
+            onPress={() => setActiveFilter('brakes')}
+          >
+            <Text style={activeFilter === 'brakes' ? styles.activeChipText : styles.chipText}>
+              Brakes
+            </Text>
           </TouchableOpacity>
         </View>
 
-        <View style={styles.listCard}>
-          {services.map((record, index) => (
-            <TouchableOpacity
-              key={record.id}
-              style={[
-                styles.recordRow,
-                index !== services.length - 1 && styles.recordBorder,
-              ]}
-              activeOpacity={0.8}
-              onPress={() => onRecordPress(record)}
-            >
-              <View style={styles.iconWrap}>
-                <Text style={styles.iconText}>🛠</Text>
-              </View>
+        {filteredServices.length > 0 ? (
+          <View style={styles.listCard}>
+            {filteredServices.map((record, index) => (
+              <View key={record.id}>
+                <TouchableOpacity
+                  style={[
+                    styles.recordRow,
+                    index !== filteredServices.length - 1 && styles.recordBorder,
+                  ]}
+                  activeOpacity={0.8}
+                  onPress={() => onRecordPress(record)}
+                  onLongPress={() => confirmDelete(record)}
+                >
+                  <View style={styles.iconWrap}>
+                    <Text style={styles.iconText}>🛠</Text>
+                  </View>
 
-              <View style={styles.recordTextWrap}>
-                <Text style={styles.recordTitle}>{record.service}</Text>
-                <Text style={styles.recordVehicle}>{record.vehicle}</Text>
-                <Text style={styles.recordMeta}>
-                  {record.date} • {record.mileage}
-                </Text>
-              </View>
+                  <View style={styles.recordTextWrap}>
+                    <Text style={styles.recordTitle}>{record.service}</Text>
+                    <Text style={styles.recordVehicle}>{record.vehicle}</Text>
+                    <Text style={styles.recordMeta}>
+                      {record.date} • {record.mileage}
+                    </Text>
+                  </View>
 
-              <Text style={styles.chevron}>›</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+                  <Text style={styles.chevron}>{expandedId === record.id ? '⌄' : '›'}</Text>
+                </TouchableOpacity>
+
+                {expandedId === record.id && (
+                  <View style={styles.expandedBox}>
+                    <Text style={styles.expandedLabel}>Service Details</Text>
+                    <Text style={styles.expandedText}>Type: {record.service}</Text>
+                    <Text style={styles.expandedText}>Vehicle: {record.vehicle}</Text>
+                    <Text style={styles.expandedText}>Date: {record.date}</Text>
+                    <Text style={styles.expandedText}>Mileage: {record.mileage}</Text>
+                    <Text style={styles.expandedText}>
+                      Notes: {record.notes?.trim() ? record.notes : 'No notes added'}
+                    </Text>
+
+                    <View style={styles.expandedActions}>
+                      <TouchableOpacity
+                        style={styles.expandedEditBtn}
+                        onPress={() =>
+                          router.push({
+                            pathname: '/edit-service',
+                            params: { id: record.id },
+                          })
+                        }
+                      >
+                        <Text style={styles.expandedEditText}>Edit</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.expandedDeleteBtn}
+                        onPress={() => confirmDelete(record)}
+                      >
+                        <Text style={styles.expandedDeleteText}>Delete</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+              </View>
+            ))}
+          </View>
+        ) : (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyText}>
+              No maintenance records yet. Tap + to log your first service.
+            </Text>
+          </View>
+        )}
       </ScrollView>
 
       <TouchableOpacity
@@ -182,6 +233,17 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
   },
+  emptyCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    padding: 14,
+  },
+  emptyText: {
+    fontSize: 13,
+    color: '#6B7280',
+  },
   recordRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -225,6 +287,56 @@ const styles = StyleSheet.create({
     fontSize: 22,
     color: '#9CA3AF',
     marginLeft: 10,
+  },
+  expandedBox: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    marginHorizontal: 8,
+    marginBottom: 10,
+    padding: 12,
+  },
+  expandedLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '700',
+    marginBottom: 6,
+    textTransform: 'uppercase',
+  },
+  expandedText: {
+    fontSize: 13,
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  expandedActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 8,
+  },
+  expandedEditBtn: {
+    flex: 1,
+    minHeight: 38,
+    borderRadius: 10,
+    backgroundColor: '#2563EB',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  expandedEditText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  expandedDeleteBtn: {
+    flex: 1,
+    minHeight: 38,
+    borderRadius: 10,
+    backgroundColor: '#FEE2E2',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  expandedDeleteText: {
+    color: '#B91C1C',
+    fontWeight: '700',
   },
   fab: {
     position: 'absolute',

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -38,6 +38,12 @@ export default function AddServiceScreen() {
   const [mileage, setMileage] = useState('');
   const [notes, setNotes] = useState('');
 
+  useEffect(() => {
+    if (!selectedVehicle && vehicleNames.length > 0) {
+      setSelectedVehicle(vehicleNames[0]);
+    }
+  }, [vehicleNames, selectedVehicle]);
+
   const displayedService =
     selectedService === 'Custom' && customService.trim()
       ? customService
@@ -75,27 +81,14 @@ export default function AddServiceScreen() {
       return;
     }
 
-    if (numericMileage < 1000) {
-      Alert.alert(
-        'Mileage Warning',
-        'Mileage seems too low compared to the last recorded service.'
-      );
-      return;
-    }
-
     addService({
       vehicle: selectedVehicle,
       serviceType: displayedService,
       date,
       mileage,
+      notes,
     });
-
-    Alert.alert('Success', 'Maintenance record saved successfully.', [
-      {
-        text: 'OK',
-        onPress: () => router.back(),
-      },
-    ]);
+    router.back();
   };
 
   return (
@@ -103,7 +96,15 @@ export default function AddServiceScreen() {
       <View style={styles.dimBackground} />
 
       <View style={styles.sheet}>
-        <View style={styles.handle} />
+        <TouchableOpacity
+          style={styles.handleTapArea}
+          onPress={() => router.back()}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Close add service popup"
+        >
+          <View style={styles.handle} />
+        </TouchableOpacity>
 
         <ScrollView
           contentContainerStyle={styles.content}
@@ -282,6 +283,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#D1D5DB',
     marginTop: 12,
     marginBottom: 8,
+  },
+  handleTapArea: {
+    alignSelf: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginTop: 4,
   },
   content: {
     paddingHorizontal: 22,

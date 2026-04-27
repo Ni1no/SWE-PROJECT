@@ -85,13 +85,7 @@ export default function AddVehicleScreen() {
       mileage,
       vin,
     });
-
-    Alert.alert('Success', 'Vehicle added successfully.', [
-      {
-        text: 'OK',
-        onPress: () => router.back(),
-      },
-    ]);
+    router.back();
   };
 
   return (
@@ -99,7 +93,15 @@ export default function AddVehicleScreen() {
       <View style={styles.dimBackground} />
 
       <View style={styles.sheet}>
-        <View style={styles.handle} />
+        <TouchableOpacity
+          style={styles.handleTapArea}
+          onPress={() => router.back()}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Close add vehicle popup"
+        >
+          <View style={styles.handle} />
+        </TouchableOpacity>
 
         <ScrollView
           contentContainerStyle={styles.content}
@@ -230,6 +232,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#D1D5DB',
     marginTop: 12,
     marginBottom: 8,
+  },
+  handleTapArea: {
+    alignSelf: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginTop: 4,
   },
   content: {
     paddingHorizontal: 22,

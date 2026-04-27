@@ -24,26 +24,49 @@ export default function VehiclesScreen() {
           View and manage the vehicles connected to your account
         </Text>
 
-        {vehicles.map((vehicle) => (
-          <View key={vehicle.id} style={styles.card}>
-            <Text style={styles.vehicleName}>{vehicle.name}</Text>
+        {vehicles.length > 0 ? (
+          vehicles.map((vehicle) => (
+            <View key={vehicle.id} style={styles.card}>
+              <Text style={styles.vehicleName}>{vehicle.name}</Text>
 
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Mileage</Text>
-              <Text style={styles.detailValue}>{vehicle.mileage}</Text>
-            </View>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Mileage</Text>
+                <Text style={styles.detailValue}>{vehicle.mileage}</Text>
+              </View>
 
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>VIN</Text>
-              <Text style={styles.detailValue}>{vehicle.vin}</Text>
-            </View>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>VIN</Text>
+                <Text style={styles.detailValue}>{vehicle.vin}</Text>
+              </View>
 
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Next Service</Text>
-              <Text style={styles.detailValue}>{vehicle.nextService}</Text>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Next Service</Text>
+                <Text style={styles.detailValue}>
+                  {vehicle.hasMaintenance && vehicle.nextService
+                    ? vehicle.nextService
+                    : 'No maintenance logged yet'}
+                </Text>
+              </View>
+              {vehicle.hasMaintenance ? (
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Service Importance (CSV-driven)</Text>
+                  <Text style={styles.detailValue}>
+                    {vehicle.advisorImportanceLabel}
+                    {vehicle.advisorImportanceScore
+                      ? ` (${vehicle.advisorImportanceScore}/100)`
+                      : ''}
+                  </Text>
+                </View>
+              ) : null}
             </View>
+          ))
+        ) : (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyText}>
+              No vehicles yet. Tap + to add your first vehicle.
+            </Text>
           </View>
-        ))}
+        )}
       </ScrollView>
 
       <TouchableOpacity
@@ -85,6 +108,18 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB',
     padding: 16,
     marginBottom: 14,
+  },
+  emptyCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    padding: 16,
+    marginBottom: 14,
+  },
+  emptyText: {
+    fontSize: 13,
+    color: '#6B7280',
   },
   vehicleName: {
     fontSize: 18,

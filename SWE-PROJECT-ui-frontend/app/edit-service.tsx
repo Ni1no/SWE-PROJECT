@@ -45,6 +45,7 @@ export default function EditServiceScreen() {
   const [customService, setCustomService] = useState('');
   const [date, setDate] = useState('');
   const [mileage, setMileage] = useState('');
+  const [notes, setNotes] = useState('');
 
   useEffect(() => {
     if (!record) return;
@@ -60,6 +61,7 @@ export default function EditServiceScreen() {
     setMileage(
       record.mileage.replace(/\s*mi\s*$/i, '').replace(/,/g, '')
     );
+    setNotes(record.notes ?? '');
   }, [record]);
 
   if (!record || !id) {
@@ -110,11 +112,9 @@ export default function EditServiceScreen() {
       serviceType: displayedService,
       date,
       mileage,
+      notes,
     });
-
-    Alert.alert('Saved', 'Maintenance record updated.', [
-      { text: 'OK', onPress: () => router.back() },
-    ]);
+    router.back();
   };
 
   return (
@@ -122,7 +122,15 @@ export default function EditServiceScreen() {
       <View style={styles.dimBackground} />
 
       <View style={styles.sheet}>
-        <View style={styles.handle} />
+        <TouchableOpacity
+          style={styles.handleTapArea}
+          onPress={() => router.back()}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Close edit service popup"
+        >
+          <View style={styles.handle} />
+        </TouchableOpacity>
 
         <ScrollView
           contentContainerStyle={styles.content}
@@ -234,6 +242,20 @@ export default function EditServiceScreen() {
             onSubmitEditing={Keyboard.dismiss}
           />
 
+          <Text style={styles.label}>Notes (Optional)</Text>
+          <TextInput
+            style={styles.notesInput}
+            placeholder="Add notes about the service, shop, or cost"
+            placeholderTextColor="#9CA3AF"
+            value={notes}
+            onChangeText={setNotes}
+            multiline
+            textAlignVertical="top"
+            blurOnSubmit={true}
+            returnKeyType="done"
+            onSubmitEditing={Keyboard.dismiss}
+          />
+
           <View style={styles.buttonRow}>
             <TouchableOpacity
               style={styles.cancelButton}
@@ -297,6 +319,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#D1D5DB',
     marginTop: 12,
     marginBottom: 8,
+  },
+  handleTapArea: {
+    alignSelf: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginTop: 4,
   },
   content: {
     paddingHorizontal: 22,
@@ -366,6 +394,18 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: '#F9FAFB',
     paddingHorizontal: 14,
+    fontSize: 15,
+    color: '#111827',
+    marginBottom: 12,
+  },
+  notesInput: {
+    minHeight: 110,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 14,
+    backgroundColor: '#F9FAFB',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
     fontSize: 15,
     color: '#111827',
     marginBottom: 12,

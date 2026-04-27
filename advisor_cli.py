@@ -21,6 +21,7 @@ def main() -> None:
     body = json.load(sys.stdin)
     ctx_dict = body.get("context") or {}
     brand_csv = body.get("brand_csv")
+    metrics_catalog_csv = body.get("metrics_catalog_csv")
     k_age = body.get("k_age", 0.04)
     base_intervals = body.get("base_intervals_miles")
     if base_intervals is not None:
@@ -47,9 +48,11 @@ def main() -> None:
         last_service_miles=last_map,
     )
     brand_path = Path(brand_csv) if brand_csv else None
+    metrics_catalog_path = Path(metrics_catalog_csv) if metrics_catalog_csv else None
     n = next_maintenance(
         ctx,
         brand_csv=brand_path,
+        metrics_catalog_csv=metrics_catalog_path,
         k_age=float(k_age),
         base_intervals_miles=base_intervals,
     )

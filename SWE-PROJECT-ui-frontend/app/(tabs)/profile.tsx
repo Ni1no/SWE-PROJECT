@@ -7,9 +7,15 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useAuth } from '../auth-context';
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const { user, signOut } = useAuth();
+  const onSignOut = () => {
+    signOut();
+    router.replace('/login');
+  };
 
   return (
     <View style={styles.container}>
@@ -24,17 +30,21 @@ export default function ProfileScreen() {
 
         <View style={styles.profileCard}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>S</Text>
+            <Text style={styles.avatarText}>{(user?.name?.[0] || 'U').toUpperCase()}</Text>
           </View>
 
-          <Text style={styles.name}>Sarah Johnson</Text>
-          <Text style={styles.email}>sarah.johnson@email.com</Text>
+          <Text style={styles.name}>{user?.name || 'User'}</Text>
+          <Text style={styles.email}>{user?.email || 'No email'}</Text>
         </View>
 
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Account</Text>
 
-          <TouchableOpacity style={styles.rowButton} activeOpacity={0.85}>
+          <TouchableOpacity
+            style={styles.rowButton}
+            activeOpacity={0.85}
+            onPress={() => router.push('/edit-profile')}
+          >
             <Text style={styles.rowButtonText}>Edit Profile</Text>
             <Text style={styles.chevron}>›</Text>
           </TouchableOpacity>
@@ -48,13 +58,21 @@ export default function ProfileScreen() {
             <Text style={styles.chevron}>›</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.rowButton} activeOpacity={0.85}>
+          <TouchableOpacity
+            style={styles.rowButton}
+            activeOpacity={0.85}
+            onPress={() => router.push('/notification-settings')}
+          >
             <Text style={styles.rowButtonText}>Notification Settings</Text>
             <Text style={styles.chevron}>›</Text>
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={styles.signOutButton} activeOpacity={0.85}>
+        <TouchableOpacity
+          style={styles.signOutButton}
+          activeOpacity={0.85}
+          onPress={onSignOut}
+        >
           <Text style={styles.signOutText}>Sign Out</Text>
         </TouchableOpacity>
       </ScrollView>

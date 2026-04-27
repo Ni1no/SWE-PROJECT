@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   getDueText,
   getReminderStatus,
@@ -9,6 +10,7 @@ import {
   fetchAdvisorPatchForVehicle,
   uiServiceTypeToAdvisorId,
 } from './advisor-client';
+import { useAuth } from './auth-context';
 
 export type Vehicle = {
   id: string;
@@ -20,6 +22,10 @@ export type Vehicle = {
   urgency: ReminderStatus;
   currentMileageNumber: number;
   dueMileageNumber: number;
+  hasMaintenance: boolean;
+  advisorImportanceScore: number;
+  advisorImportanceLabel: string;
+  reliabilityTier: string;
   /** When set, sent to Python advisor as last_service_miles (REQ-07). */
   lastServiceMiles?: Record<string, number>;
 };
@@ -31,10 +37,21 @@ export type ServiceRecord = {
   date: string;
   mileage: string;
   urgency: ReminderStatus;
+  notes?: string;
 };
 
 function parseMileageDisplay(m: string): number {
   return Number(String(m).replace(/,/g, '').replace(/[^\d.]/g, '')) || 0;
+}
+
+function parseServiceDateToMs(dateText: string): number {
+  const t = Date.parse(String(dateText).trim());
+  return Number.isFinite(t) ? t : 0;
+}
+
+function parseServiceIdToNumber(id: string): number {
+  const n = Number(id);
+  return Number.isFinite(n) ? n : 0;
 }
 
 type AppDataContextType = {
@@ -52,6 +69,7 @@ type AppDataContextType = {
     serviceType: string;
     date: string;
     mileage: string;
+    notes?: string;
   }) => void;
   updateService: (
     id: string,
@@ -60,12 +78,17 @@ type AppDataContextType = {
       serviceType: string;
       date: string;
       mileage: string;
+      notes?: string;
     }
   ) => void;
   deleteService: (id: string) => void;
 };
 
 const AppDataContext = createContext<AppDataContextType | undefined>(undefined);
+type PersistedAppData = {
+  vehicles: Vehicle[];
+  services: ServiceRecord[];
+};
 
 const initialVehicles: Vehicle[] = [
   {
@@ -78,6 +101,14 @@ const initialVehicles: Vehicle[] = [
     urgency: 'soon',
     currentMileageNumber: 42100,
     dueMileageNumber: 42600,
+    hasMaintenance: true,
+    advisorImportanceScore: 78,
+    advisorImportanceLabel: 'High',
+    reliabilityTier: 'A',
+    lastServiceMiles: {
+      engine_oil_and_filter: 42100,
+      battery_check: 36900,
+    },
   },
   {
     id: '2',
@@ -89,6 +120,13 @@ const initialVehicles: Vehicle[] = [
     urgency: 'overdue',
     currentMileageNumber: 39500,
     dueMileageNumber: 39300,
+    hasMaintenance: true,
+    advisorImportanceScore: 90,
+    advisorImportanceLabel: 'Critical',
+    reliabilityTier: 'A',
+    lastServiceMiles: {
+      tire_rotation: 39500,
+    },
   },
   {
     id: '3',
@@ -100,6 +138,13 @@ const initialVehicles: Vehicle[] = [
     urgency: 'good',
     currentMileageNumber: 18220,
     dueMileageNumber: 20020,
+    hasMaintenance: true,
+    advisorImportanceScore: 60,
+    advisorImportanceLabel: 'Medium',
+    reliabilityTier: 'C',
+    lastServiceMiles: {
+      brake_inspection: 18220,
+    },
   },
 ];
 
@@ -111,6 +156,7 @@ const initialServices: ServiceRecord[] = [
     date: 'Apr 2, 2026',
     mileage: '42,100 mi',
     urgency: 'soon',
+    notes: 'Used full synthetic at Quick Lube.',
   },
   {
     id: '2',
@@ -119,6 +165,7 @@ const initialServices: ServiceRecord[] = [
     date: 'Mar 15, 2026',
     mileage: '39,500 mi',
     urgency: 'overdue',
+    notes: 'Front and rear rotation completed.',
   },
   {
     id: '3',
@@ -127,6 +174,7 @@ const initialServices: ServiceRecord[] = [
     date: 'Feb 28, 2026',
     mileage: '18,220 mi',
     urgency: 'good',
+    notes: 'Pads measured good, no replacement needed.',
   },
   {
     id: '4',
@@ -135,27 +183,96 @@ const initialServices: ServiceRecord[] = [
     date: 'Jan 19, 2026',
     mileage: '36,900 mi',
     urgency: 'good',
+    notes: 'Battery tested at 12.6V resting.',
   },
 ];
 
 export function AppDataProvider({ children }: { children: React.ReactNode }) {
-  const [vehicles, setVehicles] = useState<Vehicle[]>(initialVehicles);
-  const [services, setServices] = useState<ServiceRecord[]>(initialServices);
+  const { user } = useAuth();
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [services, setServices] = useState<ServiceRecord[]>([]);
+  const [hydratedStorageKey, setHydratedStorageKey] = useState<string | null>(null);
+
+  const storageKeyForUser = (email: string) =>
+    `ezcar:user-data:${email.trim().toLowerCase()}`;
+
+  useEffect(() => {
+    const email = user?.email?.trim();
+    if (!email) {
+      setVehicles([]);
+      setServices([]);
+      setHydratedStorageKey(null);
+      return;
+    }
+    const key = storageKeyForUser(email);
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(key);
+        if (cancelled) return;
+        if (!raw) {
+          setVehicles([]);
+          setServices([]);
+          setHydratedStorageKey(key);
+          return;
+        }
+        const parsed = JSON.parse(raw) as Partial<PersistedAppData>;
+        const nextVehicles = Array.isArray(parsed.vehicles) ? parsed.vehicles : [];
+        const nextServices = Array.isArray(parsed.services) ? parsed.services : [];
+        setVehicles(nextVehicles);
+        setServices(nextServices);
+        setHydratedStorageKey(key);
+      } catch {
+        if (cancelled) return;
+        setVehicles([]);
+        setServices([]);
+        setHydratedStorageKey(key);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.email]);
+
+  useEffect(() => {
+    if (!hydratedStorageKey) return;
+    const payload: PersistedAppData = { vehicles, services };
+    AsyncStorage.setItem(hydratedStorageKey, JSON.stringify(payload)).catch(() => {
+      // Keep app usable if storage write fails in runtime.
+    });
+  }, [vehicles, services, hydratedStorageKey]);
 
   const syncVehicleFromServices = (
     vehicleName: string,
     servicesList: ServiceRecord[]
   ) => {
     const forV = servicesList.filter((s) => s.vehicle === vehicleName);
-    if (forV.length === 0) return;
 
     setVehicles((prev) => {
       const vIdx = prev.findIndex((v) => v.name === vehicleName);
       if (vIdx === -1) return prev;
+      const vehicle = prev[vIdx];
 
-      const best = forV.reduce((a, b) =>
-        parseMileageDisplay(b.mileage) > parseMileageDisplay(a.mileage) ? b : a
-      );
+      if (forV.length === 0) {
+        const cleared: Vehicle = {
+          ...vehicle,
+          hasMaintenance: false,
+          nextService: '',
+          dueText: '',
+          advisorImportanceScore: 0,
+          advisorImportanceLabel: 'Low',
+          lastServiceMiles: {},
+        };
+        return prev.map((v, i) => (i === vIdx ? cleared : v));
+      }
+
+      const best = [...forV].sort((a, b) => {
+        const dateDiff = parseServiceDateToMs(b.date) - parseServiceDateToMs(a.date);
+        if (dateDiff !== 0) return dateDiff;
+        const idDiff = parseServiceIdToNumber(b.id) - parseServiceIdToNumber(a.id);
+        if (idDiff !== 0) return idDiff;
+        return parseMileageDisplay(b.mileage) - parseMileageDisplay(a.mileage);
+      })[0];
       const currentMileageNumber = parseMileageDisplay(best.mileage);
       const intervalMiles = getServiceIntervalMiles(best.service);
       const dueMileageNumber = currentMileageNumber + intervalMiles;
@@ -174,7 +291,6 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      const vehicle = prev[vIdx];
       const mileageDisplay = best.mileage.includes('mi')
         ? best.mileage
         : `${String(best.mileage).replace(/,/g, '')} mi`;
@@ -183,11 +299,15 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         ...vehicle,
         mileage: mileageDisplay,
         currentMileageNumber,
+        hasMaintenance: true,
         lastServiceMiles,
         nextService: best.service,
         dueMileageNumber,
         dueText,
         urgency,
+        advisorImportanceScore: vehicle.advisorImportanceScore,
+        advisorImportanceLabel: vehicle.advisorImportanceLabel,
+        reliabilityTier: vehicle.reliabilityTier,
       };
 
       queueMicrotask(() => {
@@ -212,42 +332,26 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   }) => {
     const vehicleName = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
     const currentMileageNumber = Number(vehicle.mileage.replace(/,/g, ''));
-    const nextService = 'Oil Change';
-    const intervalMiles = getServiceIntervalMiles(nextService);
-    const dueMileageNumber = currentMileageNumber + intervalMiles;
-
-    const lastServiceMiles: Record<string, number> = {
-      engine_oil_and_filter: currentMileageNumber,
-    };
+    const dueMileageNumber = currentMileageNumber;
 
     const newVehicle: Vehicle = {
       id: Date.now().toString(),
       name: vehicleName,
       mileage: `${vehicle.mileage} mi`,
       vin: vehicle.vin.trim() || 'VIN not added',
-      nextService,
-      dueText: getDueText(currentMileageNumber, dueMileageNumber),
-      urgency: getReminderStatus(currentMileageNumber, dueMileageNumber),
+      nextService: '',
+      dueText: '',
+      urgency: 'good',
       currentMileageNumber,
       dueMileageNumber,
-      lastServiceMiles,
+      hasMaintenance: false,
+      advisorImportanceScore: 0,
+      advisorImportanceLabel: 'Low',
+      reliabilityTier: 'B',
+      lastServiceMiles: {},
     };
 
     setVehicles((prev) => [newVehicle, ...prev]);
-
-    const profile = {
-      year: vehicle.year,
-      make: vehicle.make,
-      model: vehicle.model,
-    };
-    queueMicrotask(() => {
-      fetchAdvisorPatchForVehicle(newVehicle, profile).then((patch) => {
-        if (!patch) return;
-        setVehicles((prev) =>
-          prev.map((v) => (v.id === newVehicle.id ? { ...v, ...patch } : v))
-        );
-      });
-    });
   };
 
   const addService = (service: {
@@ -255,6 +359,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     serviceType: string;
     date: string;
     mileage: string;
+    notes?: string;
   }) => {
     const currentMileageNumber = Number(service.mileage.replace(/,/g, ''));
     const intervalMiles = getServiceIntervalMiles(service.serviceType);
@@ -268,6 +373,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       date: service.date,
       mileage: `${service.mileage} mi`,
       urgency,
+      notes: service.notes?.trim() || undefined,
     };
 
     setServices((prev) => {
@@ -284,6 +390,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       serviceType: string;
       date: string;
       mileage: string;
+      notes?: string;
     }
   ) => {
     const currentMileageNumber = Number(service.mileage.replace(/,/g, ''));
@@ -303,6 +410,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
               date: service.date,
               mileage: `${service.mileage} mi`,
               urgency,
+              notes: service.notes?.trim() || undefined,
             }
           : s
       );

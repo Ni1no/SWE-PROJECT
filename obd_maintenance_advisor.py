@@ -8,7 +8,8 @@ the mileage side), REQ-09 / UI-04 / UI-06 (urgency for dashboard: overdue / due 
 REQ-01 vehicle profile: mileage, make, model, model year (stored on ServiceContext). Time-based
 REQ-08 (2 weeks) needs service dates from the full app; not represented here.
 
-All distances are in miles. No OBD fault logic. Does not load obd_maintenance_metrics_catalog.csv.
+All distances are in miles. No OBD fault logic. Reads obd_maintenance_metrics_catalog.csv for
+REQ-08-style due-soon window baseline (fallback 500 mi).
 
 NHTSA vPIC-style decode (VINData.csv): REQ-02-style Make, Model, Model Year fill the profile and
 drive vehicle_age_years for service_factor. Mileage intervals stay DEFAULT_BASE_INTERVALS_MILES
@@ -20,6 +21,7 @@ from __future__ import annotations
 
 import csv
 import datetime
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -57,7 +59,10 @@ class NextMaintenance:
     urgency: MileageUrgency
     service_factor: float
     brand_reliability_index: float
+    reliability_tier: str
     matched_brand_key: str
+    importance_score: float
+    importance_label: str
 
     def summary(self) -> str:
         """Human-readable overdue or upcoming line for UI or logs."""
@@ -83,6 +88,29 @@ def mileage_urgency(
     return "current"
 
 
+def compute_importance(
+    *,
+    urgency: MileageUrgency,
+    service_factor: float,
+    reliability_index: float,
+) -> tuple[float, str]:
+    """
+    CSV-driven importance score/label for UI.
+    Higher for overdue items, older/less reliable vehicles (via service_factor and reliability index).
+    """
+    urgency_points = {"current": 40.0, "due_soon": 70.0, "overdue": 92.0}[urgency]
+    sf_boost = min(12.0, max(0.0, (service_factor - 1.0) * 18.0))
+    reliability_boost = min(10.0, max(0.0, (1.0 - reliability_index) * 22.0))
+    score = min(100.0, urgency_points + sf_boost + reliability_boost)
+    if score >= 90:
+        return score, "Critical"
+    if score >= 72:
+        return score, "High"
+    if score >= 55:
+        return score, "Medium"
+    return score, "Low"
+
+
 # --- Paths and CSV ---------------------------------------------------------------
 
 def _project_dir() -> Path:
@@ -95,6 +123,28 @@ def load_brand_rows(path: Path | None = None) -> list[dict[str, str]]:
     p = path or _project_dir() / "brand_reliability_lookup.csv"
     with p.open(newline="", encoding="utf-8") as f:
         return list(csv.DictReader(f))
+
+
+def load_due_soon_window_miles(path: Path | None = None) -> float:
+    """
+    Read REQ-08 reminder window from obd_maintenance_metrics_catalog.csv notes when possible.
+    Falls back to REMINDER_WITHIN_MILES if not found or unparsable.
+    """
+    p = path or _project_dir() / "obd_maintenance_metrics_catalog.csv"
+    if not p.exists():
+        return float(REMINDER_WITHIN_MILES)
+    try:
+        with p.open(newline="", encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                key = str(row.get("metric_key") or "").strip().lower()
+                notes = str(row.get("notes") or "")
+                if key in {"service_factor_formula_notes", "service_factor"}:
+                    m = re.search(r"(\d+(?:\.\d+)?)\s*mi", notes, flags=re.IGNORECASE)
+                    if m:
+                        return float(m.group(1))
+    except (OSError, ValueError):
+        return float(REMINDER_WITHIN_MILES)
+    return float(REMINDER_WITHIN_MILES)
 
 
 def load_nhtsa_vin_csv(path: Path | None = None) -> dict[str, str]:
@@ -226,6 +276,10 @@ def compute_service_factor(
 # interval table in VINData.csv). Oil 5000 mi matches glossary §1.3 example; others are US anchors.
 DEFAULT_BASE_INTERVALS_MILES: dict[str, float] = {
     "engine_oil_and_filter": 5000.0,
+    "tire_rotation": 6000.0,
+    "brake_inspection": 12000.0,
+    "battery_check": 12000.0,
+    "air_filter_replacement": 15000.0,
     "engine_air_filter": 15000.0,
     "cabin_air_filter": 12000.0,
     "spark_plugs": 30000.0,
@@ -237,12 +291,16 @@ DEFAULT_BASE_INTERVALS_MILES: dict[str, float] = {
 # Tie-break when two items share the same urgency (lower = preferred first)
 _SERVICE_ORDER: dict[str, int] = {
     "engine_oil_and_filter": 0,
-    "engine_air_filter": 1,
-    "cabin_air_filter": 2,
-    "spark_plugs": 3,
-    "brake_fluid": 4,
-    "transmission_fluid": 5,
-    "coolant_service": 6,
+    "tire_rotation": 1,
+    "brake_inspection": 2,
+    "battery_check": 3,
+    "air_filter_replacement": 4,
+    "engine_air_filter": 5,
+    "cabin_air_filter": 6,
+    "spark_plugs": 7,
+    "brake_fluid": 8,
+    "transmission_fluid": 9,
+    "coolant_service": 10,
 }
 
 # Floor so scaled intervals do not go unrealistically short (not specified in REQ doc)
@@ -266,12 +324,13 @@ def next_maintenance(
     ctx: ServiceContext,
     *,
     brand_csv: Path | None = None,
+    metrics_catalog_csv: Path | None = None,
     k_age: float = 0.04,
     base_intervals_miles: dict[str, float] | None = None,
 ) -> NextMaintenance | None:
     """REQ-07 next due by mileage; REQ-09 ordering; None if no last_service_miles entries."""
     brands = load_brand_rows(brand_csv)
-    ri, _tier, matched = lookup_brand_reliability(
+    ri, tier, matched = lookup_brand_reliability(
         str(ctx.vehicle_make) if ctx.vehicle_make else None, brands
     )
     sf = compute_service_factor(ctx.vehicle_age_years, ri, k_age=k_age)
@@ -311,7 +370,15 @@ def next_maintenance(
         return (rem, _SERVICE_ORDER.get(sid, 99))
 
     sid, last_f, interval, next_at, remaining = min(pool, key=sort_key)
-    urg = mileage_urgency(remaining)
+    due_soon_window = load_due_soon_window_miles(metrics_catalog_csv)
+    # Older/less reliable cars get an earlier warning band.
+    dynamic_due_soon_window = due_soon_window * min(1.8, max(1.0, sf))
+    urg = mileage_urgency(remaining, within_miles=dynamic_due_soon_window)
+    importance_score, importance_label = compute_importance(
+        urgency=urg,
+        service_factor=sf,
+        reliability_index=ri,
+    )
 
     return NextMaintenance(
         service_id=sid,
@@ -323,7 +390,10 @@ def next_maintenance(
         urgency=urg,
         service_factor=sf,
         brand_reliability_index=ri,
+        reliability_tier=tier,
         matched_brand_key=matched,
+        importance_score=importance_score,
+        importance_label=importance_label,
     )
 
 
