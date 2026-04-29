@@ -1,48 +1,32 @@
 # EZ Car Maintenance Frontend
 
-EZ Car Maintenance is an app for tracking vehicle maintenance and upcoming service needs, along with an AI agent users can interact with. The frontend was built using React Native with Expo.
+The app is built with **React Native** and **Expo**: one TypeScript codebase runs on **iOS** and **Android**. Expo speeds up development and testing — run `npm start`, then **scan the QR code** with the **Expo Go** app on a physical device (no full native build required for day-to-day work).
 
-## Frontend Features
+## Frontend Features (presentation map)
 
-The frontend currently includes:
+- **Dashboard** — horizontal cards per vehicle; **color-coded urgency** (red / amber / green) for how close the next service is.
+- **Vehicles** — read-only list of vehicles on the account.
+- **Maintenance log — full CRUD**
+  - **Create** — FAB opens *Log Maintenance Record*.
+  - **Read** — list with filters (All / Oil / Tires / Brakes); **newest service date at the top**.
+  - **Update** — **tap a row** to open *Edit Maintenance Record*.
+  - **Delete** — **long-press** a row → confirmation dialog (avoids accidental deletes).
+- **Add Vehicle** — manual entry or **VIN decode** via the public **NHTSA vPIC** API (`vpic.nhtsa.dot.gov`) to auto-fill **year, make, and model**.
+- **AI Assistant** — **Express** `POST /ai/chat` (JWT): symptom text → guidance + urgency (**Immediate** / **Within a Week** / **Monitor**) + disclaimer on every reply. **Python** bridge (optional) appends next-maintenance context from mileage, history, and brand CSV. **NHTSA VIN** decode feeds year/make/model into that advisor path.
+- **Profile / auth** — login, register, JWT session restore (`/auth/me`), sign-out.
 
-- Dashboard screen
-- Vehicles screen
-- Maintenance Log screen
-- Add Vehicle form
-- Log Maintenance Record form
-- AI Assistant screen
-- Profile screen
+Local persistence: vehicles and maintenance for each signed-in user are stored on-device (**AsyncStorage**) so data survives closing the app.
 
-The frontend currently uses shared mock state so the app can store updates by the user:
-- adding a vehicle updates the Vehicles screen
-- logging a maintenance record updates the Maintenance Log
-- logging a maintenance record also updates the Dashboard
+## Reminder and advisor behavior
 
-## Reminder Logic
-
-A first pass version of reminder logic is implemented inside the frontend.
-
-Reminder behavior:
-- each service type has a certain mileage interval
-- the app calculates when the next service is due
-- services/vehicles are marked as:
-  - `overdue`
-  - `soon`
-  - `good`
-- dashboard colors and urgency indicators are based on this logic
-
-This is currently local/frontend logic.
-
-This implementation establishes how reminder behavior works in the app and how it's reflected in the UI.
+- Base mileage intervals and UI labels use local helpers; the **OBD maintenance advisor** (optional Node + Python bridge) can override **next service**, **due text**, and **urgency** when the bridge is running.
+- Dashboard urgency dot and service strip colors follow `overdue` / `soon` / `good`.
 
 ## Tools Used
 
-- React Native (Core framework)
-- Expo (Plaform/tools on top of React Native framework.)
-   - Expo Go mobile app used to test app on phones
-   - Expo Router used for routing as well as managing tabs
-- TypeScript (Typed JavaScript)
+- **React Native** — UI and navigation primitives.
+- **Expo** — toolchain, dev server, QR-to-device workflow, Expo Router (file-based routes + tabs).
+- **TypeScript** — typed app code.
 
 ## How to Run
 
@@ -58,8 +42,8 @@ npm start
 ```
 
 To open the app:
-- Press W to run in web browser  
-- Scan the QR code with your phone to run on mobile via Expo Go
+- Press **W** for web (if enabled in your Expo setup).
+- **Scan the QR code** with **Expo Go** on your phone (same Wi‑Fi as your dev machine, or use tunnel mode if needed).
 
 
 Also included below is the default README contents for apps created via Expo (most commonly used React Native Framework)

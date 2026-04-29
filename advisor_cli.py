@@ -22,7 +22,7 @@ def main() -> None:
     ctx_dict = body.get("context") or {}
     brand_csv = body.get("brand_csv")
     metrics_catalog_csv = body.get("metrics_catalog_csv")
-    k_age = body.get("k_age", 0.04)
+    k_age = body.get("k_age", 0.068)
     base_intervals = body.get("base_intervals_miles")
     if base_intervals is not None:
         base_intervals = {k: float(v) for k, v in base_intervals.items()}

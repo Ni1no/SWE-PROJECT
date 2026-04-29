@@ -1,6 +1,7 @@
 /**
- * REQ-02: NHTSA vPIC decode — auto-fill year / make / model from VIN.
- * Schedule intervals still use app defaults + advisor (REQ-07).
+ * REQ-02: **NHTSA** (National Highway Traffic Safety Administration) vPIC web API —
+ * `vpic.nhtsa.dot.gov` — decode a VIN into Model Year, Make, and Model for Add Vehicle.
+ * OEM service intervals are not returned here; schedules still use app defaults + advisor (REQ-07).
  */
 
 export type VinDecodeResult = {

@@ -1,31 +1,77 @@
+/**
+ * Maintenance log — full CRUD aligned with product story:
+ * - Create: FAB → Add Service
+ * - Read: list with filters; **newest records first** (by service date, then id)
+ * - Update: **tap a row** to open the edit form
+ * - Delete: **long-press** a row → confirmation alert (prevents accidental deletes)
+ *
+ * Expo (React Native): one codebase runs on iOS and Android; use Expo Go + QR from `npm start`.
+ */
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  TextInput,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAppData } from '../data-context';
 import type { ServiceRecord } from '../data-context';
+
+function sortServicesNewestFirst(list: ServiceRecord[]): ServiceRecord[] {
+  return [...list].sort((a, b) => {
+    const ta = Date.parse(String(a.date).trim());
+    const tb = Date.parse(String(b.date).trim());
+    const da = Number.isFinite(ta) ? ta : 0;
+    const db = Number.isFinite(tb) ? tb : 0;
+    if (db !== da) return db - da;
+    const na = Number(a.id);
+    const nb = Number(b.id);
+    if (Number.isFinite(nb) && Number.isFinite(na) && nb !== na) return nb - na;
+    return String(b.id).localeCompare(String(a.id));
+  });
+}
 
 export default function LogScreen() {
   const router = useRouter();
   const { services, deleteService } = useAppData();
   const [activeFilter, setActiveFilter] = useState<'all' | 'oil' | 'tires' | 'brakes'>('all');
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const sortedServices = useMemo(() => sortServicesNewestFirst(services), [services]);
 
   const filteredServices = useMemo(() => {
-    if (activeFilter === 'all') return services;
-    const keywordByFilter = {
-      oil: ['oil'],
-      tires: ['tire', 'tyre', 'rotation', 'wheel'],
-      brakes: ['brake'],
-    } as const;
-    const keys = keywordByFilter[activeFilter];
-    return services.filter((r) => {
-      const s = r.service.toLowerCase();
-      return keys.some((k) => s.includes(k));
+    let list = sortedServices;
+    if (activeFilter !== 'all') {
+      const keywordByFilter = {
+        oil: ['oil'],
+        tires: ['tire', 'tyre', 'rotation', 'wheel'],
+        brakes: ['brake'],
+      } as const;
+      const keys = keywordByFilter[activeFilter];
+      list = sortedServices.filter((r) => {
+        const s = r.service.toLowerCase();
+        return keys.some((k) => s.includes(k));
+      });
+    }
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter((r) => {
+      const hay = [r.service, r.vehicle, r.date, r.mileage, r.notes ?? '']
+        .join(' ')
+        .toLowerCase();
+      return hay.includes(q);
     });
-  }, [services, activeFilter]);
+  }, [sortedServices, activeFilter, searchQuery]);
 
-  const onRecordPress = (record: ServiceRecord) => {
-    setExpandedId((prev) => (prev === record.id ? null : record.id));
+  const openEdit = (record: ServiceRecord) => {
+    router.push({
+      pathname: '/edit-service',
+      params: { id: record.id },
+    });
   };
 
   const confirmDelete = (record: ServiceRecord) => {
@@ -51,7 +97,7 @@ export default function LogScreen() {
       >
         <Text style={styles.title}>Maintenance Log</Text>
         <Text style={styles.subtitle}>
-          View and manage service history for your vehicles
+          Tap a row to edit. Long-press to delete (you will be asked to confirm).
         </Text>
 
         <View style={styles.filterRow}>
@@ -86,67 +132,48 @@ export default function LogScreen() {
           </TouchableOpacity>
         </View>
 
-        {filteredServices.length > 0 ? (
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search vehicle, service, date, mileage, notes…"
+          placeholderTextColor="#9CA3AF"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          autoCapitalize="none"
+          autoCorrect={false}
+          clearButtonMode="while-editing"
+        />
+
+        {sortedServices.length > 0 && filteredServices.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyText}>No records match this filter or search.</Text>
+          </View>
+        ) : filteredServices.length > 0 ? (
           <View style={styles.listCard}>
             {filteredServices.map((record, index) => (
-              <View key={record.id}>
-                <TouchableOpacity
-                  style={[
-                    styles.recordRow,
-                    index !== filteredServices.length - 1 && styles.recordBorder,
-                  ]}
-                  activeOpacity={0.8}
-                  onPress={() => onRecordPress(record)}
-                  onLongPress={() => confirmDelete(record)}
-                >
-                  <View style={styles.iconWrap}>
-                    <Text style={styles.iconText}>🛠</Text>
-                  </View>
+              <TouchableOpacity
+                key={record.id}
+                style={[
+                  styles.recordRow,
+                  index !== filteredServices.length - 1 && styles.recordBorder,
+                ]}
+                activeOpacity={0.8}
+                onPress={() => openEdit(record)}
+                onLongPress={() => confirmDelete(record)}
+              >
+                <View style={styles.iconWrap}>
+                  <Text style={styles.iconText}>🛠</Text>
+                </View>
 
-                  <View style={styles.recordTextWrap}>
-                    <Text style={styles.recordTitle}>{record.service}</Text>
-                    <Text style={styles.recordVehicle}>{record.vehicle}</Text>
-                    <Text style={styles.recordMeta}>
-                      {record.date} • {record.mileage}
-                    </Text>
-                  </View>
+                <View style={styles.recordTextWrap}>
+                  <Text style={styles.recordTitle}>{record.service}</Text>
+                  <Text style={styles.recordVehicle}>{record.vehicle}</Text>
+                  <Text style={styles.recordMeta}>
+                    {record.date} • {record.mileage}
+                  </Text>
+                </View>
 
-                  <Text style={styles.chevron}>{expandedId === record.id ? '⌄' : '›'}</Text>
-                </TouchableOpacity>
-
-                {expandedId === record.id && (
-                  <View style={styles.expandedBox}>
-                    <Text style={styles.expandedLabel}>Service Details</Text>
-                    <Text style={styles.expandedText}>Type: {record.service}</Text>
-                    <Text style={styles.expandedText}>Vehicle: {record.vehicle}</Text>
-                    <Text style={styles.expandedText}>Date: {record.date}</Text>
-                    <Text style={styles.expandedText}>Mileage: {record.mileage}</Text>
-                    <Text style={styles.expandedText}>
-                      Notes: {record.notes?.trim() ? record.notes : 'No notes added'}
-                    </Text>
-
-                    <View style={styles.expandedActions}>
-                      <TouchableOpacity
-                        style={styles.expandedEditBtn}
-                        onPress={() =>
-                          router.push({
-                            pathname: '/edit-service',
-                            params: { id: record.id },
-                          })
-                        }
-                      >
-                        <Text style={styles.expandedEditText}>Edit</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.expandedDeleteBtn}
-                        onPress={() => confirmDelete(record)}
-                      >
-                        <Text style={styles.expandedDeleteText}>Delete</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                )}
-              </View>
+                <Text style={styles.chevron}>›</Text>
+              </TouchableOpacity>
             ))}
           </View>
         ) : (
@@ -193,6 +220,17 @@ const styles = StyleSheet.create({
   filterRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    marginBottom: 12,
+  },
+  searchInput: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 14,
+    fontSize: 14,
+    color: '#111827',
     marginBottom: 18,
   },
   activeChip: {
@@ -287,56 +325,6 @@ const styles = StyleSheet.create({
     fontSize: 22,
     color: '#9CA3AF',
     marginLeft: 10,
-  },
-  expandedBox: {
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 12,
-    marginHorizontal: 8,
-    marginBottom: 10,
-    padding: 12,
-  },
-  expandedLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-    fontWeight: '700',
-    marginBottom: 6,
-    textTransform: 'uppercase',
-  },
-  expandedText: {
-    fontSize: 13,
-    color: '#1F2937',
-    marginBottom: 4,
-  },
-  expandedActions: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 8,
-  },
-  expandedEditBtn: {
-    flex: 1,
-    minHeight: 38,
-    borderRadius: 10,
-    backgroundColor: '#2563EB',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  expandedEditText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
-  expandedDeleteBtn: {
-    flex: 1,
-    minHeight: 38,
-    borderRadius: 10,
-    backgroundColor: '#FEE2E2',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  expandedDeleteText: {
-    color: '#B91C1C',
-    fontWeight: '700',
   },
   fab: {
     position: 'absolute',

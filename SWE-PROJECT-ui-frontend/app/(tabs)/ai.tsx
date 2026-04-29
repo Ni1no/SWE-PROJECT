@@ -1,3 +1,12 @@
+/**
+ * AI Assistant — **two backends** (presentation architecture):
+ * 1) **Express** `POST /ai/chat` — symptom description → guidance + urgency + disclaimer.
+ * 2) **Python** (via `advisor_server.mjs` HTTP bridge) — odometer, age, make, service history,
+ *    plus brand CSV → next maintenance item (separate concern from chat triage).
+ *
+ * NHTSA VIN decode fills year/make/model on the vehicle; that profile feeds the Python advisor
+ * through `vehicle.name` parsing in `advisor-client.ts`.
+ */
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
@@ -8,18 +17,32 @@ import {
   TextInput,
   Alert,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { useAppData } from '../data-context';
 import { fetchAdvisorPatchForVehicle, isAdvisorReachable } from '../advisor-client';
 import { getServiceIntervalMiles } from '../reminder-utils';
 import { useAuth } from '../auth-context';
+import { postAiChat, type AiChatTurn, type AiUrgencyLabel } from '../ai-api-client';
 
 function parseMileageValue(mileage: string): number {
   return Number(String(mileage).replace(/,/g, '').replace(/[^\d.]/g, '')) || 0;
 }
 
+function mapAdvisorUrgencyToChip(
+  patch: Awaited<ReturnType<typeof fetchAdvisorPatchForVehicle>>
+): AiUrgencyLabel {
+  if (!patch) return 'Monitor';
+  if (patch.urgency === 'overdue') return 'Immediate';
+  if (patch.urgency === 'soon') return 'Within a Week';
+  return 'Monitor';
+}
+
+const OFFLINE_DISCLAIMER =
+  'If symptoms are severe, sudden, or involve steering, brakes, smoke, or warning lights, stop driving and consult a certified professional immediately.';
+
 export default function AIAssistantScreen() {
   const { vehicles, services } = useAppData();
-  const { user } = useAuth();
+  const { user, getAccessToken } = useAuth();
   const [input, setInput] = useState('');
   const [selectedVehicleIdx, setSelectedVehicleIdx] = useState(0);
   const [showVehicleDropdown, setShowVehicleDropdown] = useState(false);
@@ -28,10 +51,17 @@ export default function AIAssistantScreen() {
     [vehicles, selectedVehicleIdx]
   );
   const selectedVehicleName = selectedVehicle?.name ?? 'No vehicle selected';
-  const [messages, setMessages] = useState<
-    Array<{ id: string; from: 'user' | 'ai'; text: string; chip?: string }>
-  >([]);
+  type ChatMessage = {
+    id: string;
+    from: 'user' | 'ai';
+    text: string;
+    chip?: AiUrgencyLabel;
+    disclaimer?: string;
+  };
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [advisorConnected, setAdvisorConnected] = useState<boolean | null>(null);
+  const [expressAiConnected, setExpressAiConnected] = useState<boolean | null>(null);
+  const [aiSessionId, setAiSessionId] = useState<string | null>(null);
 
   useEffect(() => {
     isAdvisorReachable().then(setAdvisorConnected);
@@ -42,7 +72,31 @@ export default function AIAssistantScreen() {
     setMessages([]);
     setSelectedVehicleIdx(0);
     setInput('');
+    setExpressAiConnected(null);
+    setAiSessionId(null);
   }, [user?.email]);
+
+  useEffect(() => {
+    // Keep session context scoped to the selected vehicle.
+    setAiSessionId(null);
+    setExpressAiConnected(null);
+    setMessages([]);
+  }, [selectedVehicleName]);
+
+  const copyLastReply = async () => {
+    const last = [...messages].reverse().find((m) => m.from === 'ai');
+    if (!last) {
+      Alert.alert('Nothing to copy', 'Send a message first so the assistant can reply.');
+      return;
+    }
+    const blob = `${last.text}\n\n${last.disclaimer || ''}`.trim();
+    try {
+      await Clipboard.setStringAsync(blob);
+      Alert.alert('Copied', 'Last assistant reply is on the clipboard.');
+    } catch {
+      Alert.alert('Copy failed', 'Could not write to the clipboard.');
+    }
+  };
 
   const onSend = async () => {
     if (!input.trim()) return;
@@ -51,35 +105,63 @@ export default function AIAssistantScreen() {
       return;
     }
     const q = input.trim();
+    const historyPayload: AiChatTurn[] = messages
+      .slice(-16)
+      .map((m) => ({
+        role: m.from === 'user' ? ('user' as const) : ('ai' as const),
+        text: m.text,
+      }));
+
     setMessages((prev) => [...prev, { id: Date.now().toString(), from: 'user', text: q }]);
     setInput('');
 
     const patch = await fetchAdvisorPatchForVehicle(selectedVehicle);
-    const chip = !patch
-      ? 'Just Monitor It'
-      : patch.urgency === 'overdue'
-      ? 'Immediate'
-      : patch.urgency === 'soon'
-      ? 'Within a Week'
-      : 'Just Monitor It';
+    const maintenanceLine = patch
+      ? `\n\nNext priority service: **${patch.nextService}** (${patch.dueText}).`
+      : '\n\nNext priority service unavailable right now — start `advisor_server.mjs` to fetch mileage-based service priority from your logs and brand data.';
+
+    const expressRes = await postAiChat(
+      q,
+      { name: selectedVehicleName },
+      getAccessToken,
+      { sessionId: aiSessionId, history: historyPayload }
+    );
+    if (expressRes) {
+      setExpressAiConnected(true);
+      if (expressRes.sessionId) setAiSessionId(expressRes.sessionId);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `ai-${Date.now()}`,
+          from: 'ai',
+          chip: expressRes.urgency,
+          text: `${expressRes.reply}${maintenanceLine}`,
+          disclaimer: expressRes.disclaimer,
+        },
+      ]);
+      return;
+    }
+
+    setExpressAiConnected(false);
+
+    const chip = mapAdvisorUrgencyToChip(patch);
     const qLower = q.toLowerCase();
     const isVague =
       qLower.length < 12 ||
       /(help|issue|problem|car sounds bad|what should i do|is this bad)\??$/.test(
         qLower
       );
-    const topic =
-      qLower.includes('oil')
-        ? 'oil'
-        : qLower.includes('tire') || qLower.includes('tyre') || qLower.includes('rotation')
-        ? 'tires'
-        : qLower.includes('brake')
-        ? 'brakes'
-        : qLower.includes('battery')
-        ? 'battery'
-        : qLower.includes('air filter') || qLower.includes('filter')
-        ? 'air filter'
-        : null;
+    const topic = qLower.includes('oil')
+      ? 'oil'
+      : qLower.includes('tire') || qLower.includes('tyre') || qLower.includes('rotation')
+      ? 'tires'
+      : qLower.includes('brake')
+      ? 'brakes'
+      : qLower.includes('battery')
+      ? 'battery'
+      : qLower.includes('air filter') || qLower.includes('filter')
+      ? 'air filter'
+      : null;
     const serviceForTopic =
       topic === 'oil'
         ? 'Oil Change'
@@ -118,7 +200,11 @@ export default function AIAssistantScreen() {
       const target = services
         .filter((s) => s.vehicle === selectedVehicleName && s.service === serviceForTopic)
         .sort((a, b) => parseMileageValue(b.mileage) - parseMileageValue(a.mileage))[0];
-      const interval = getServiceIntervalMiles(serviceForTopic);
+      const interval = getServiceIntervalMiles(
+        serviceForTopic,
+        selectedVehicleName,
+        selectedVehicle?.modelYear
+      );
       if (!target) {
         specificInfo = `You have not logged ${serviceForTopic} yet, so I am unable to give an accurate due-in mileage. ${serviceForTopic} is typically recommended every ${interval.toLocaleString()} miles for this car profile.`;
       } else {
@@ -137,9 +223,12 @@ export default function AIAssistantScreen() {
       ? `Advisor overall next service is ${patch.nextService} (${patch.dueText}).`
       : 'Advisor bridge is offline right now, so this response uses local log estimates.';
 
+    const offlineExpressNote =
+      '**AI advisory (Express):** Could not reach `/ai/chat` (sign in with the API running, or check your network). Showing a local fallback for triage.\n\n';
+
     const body = isVague
-      ? `${topicHint} ${specificInfo || advisorStatus} Can you share symptom details, when it happens, and any dashboard warning lights?`
-      : `${topicHint} ${specificInfo || advisorStatus} Recent records: ${recentForVehicle || 'none found'}.`;
+      ? `${offlineExpressNote}${topicHint} ${specificInfo || advisorStatus} Can you share symptom details, when it happens, and any dashboard warning lights?`
+      : `${offlineExpressNote}${topicHint} ${specificInfo || advisorStatus} Recent records: ${recentForVehicle || 'none found'}.`;
 
     setMessages((prev) => [
       ...prev,
@@ -147,7 +236,8 @@ export default function AIAssistantScreen() {
         id: `ai-${Date.now()}`,
         from: 'ai',
         chip,
-        text: body,
+        text: `${body}${maintenanceLine}`,
+        disclaimer: OFFLINE_DISCLAIMER,
       },
     ]);
   };
@@ -157,7 +247,22 @@ export default function AIAssistantScreen() {
       <View style={styles.content}>
         <Text style={styles.title}>AI Assistant</Text>
         <Text style={styles.subtitle}>
-          Ask questions about your vehicle and maintenance history
+          Symptom triage uses the Express AI endpoint; next-service scheduling uses the Python
+          advisor bridge. VIN-decoded year, make, and model feed the advisor through your vehicle
+          profile.
+        </Text>
+        <Text
+          style={[
+            styles.connectionText,
+            expressAiConnected === false && styles.connectionTextOffline,
+          ]}
+        >
+          Express AI:{' '}
+          {expressAiConnected === null
+            ? 'tap Send to try /ai/chat'
+            : expressAiConnected
+            ? 'connected'
+            : 'offline or no JWT — use API login for full flow'}
         </Text>
         <Text
           style={[
@@ -165,7 +270,8 @@ export default function AIAssistantScreen() {
             advisorConnected === false && styles.connectionTextOffline,
           ]}
         >
-          Advisor: {advisorConnected === null ? 'checking...' : advisorConnected ? 'connected' : 'offline'}
+          Python advisor bridge:{' '}
+          {advisorConnected === null ? 'checking...' : advisorConnected ? 'connected' : 'offline'}
         </Text>
 
         <Text style={styles.label}>Vehicle</Text>
@@ -208,8 +314,10 @@ export default function AIAssistantScreen() {
             <View style={styles.welcomeCard}>
               <Text style={styles.welcomeTitle}>Welcome to your AI assistant</Text>
               <Text style={styles.welcomeText}>
-                Ask about upcoming maintenance, warning signs, or what service to do next for your
-                selected vehicle.
+                Describe what you are noticing. The Express server returns urgency (Immediate,
+                Within a Week, or Monitor) and a safety disclaimer on every reply. When the Python
+                bridge is running, you also see the next maintenance item from mileage, service
+                history, and brand reliability CSV data.
               </Text>
             </View>
           )}
@@ -224,7 +332,8 @@ export default function AIAssistantScreen() {
                   )}
                   <Text style={styles.aiText}>{m.text}</Text>
                   <Text style={styles.disclaimer}>
-                    NOTE: Please consult a certified mechanic for serious issues.
+                    {m.disclaimer ||
+                      'Consult a certified professional for serious or uncertain issues.'}
                   </Text>
                 </View>
               </View>
@@ -239,9 +348,12 @@ export default function AIAssistantScreen() {
         </ScrollView>
 
         <View style={styles.inputRow}>
+          <TouchableOpacity style={styles.copyButton} onPress={copyLastReply}>
+            <Text style={styles.copyButtonText}>Copy</Text>
+          </TouchableOpacity>
           <TextInput
             style={styles.input}
-            placeholder="Ask about your car..."
+            placeholder="Describe the problem..."
             placeholderTextColor="#9CA3AF"
             value={input}
             onChangeText={setInput}
@@ -273,14 +385,15 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#6B7280',
-    marginBottom: 18,
+    marginBottom: 10,
+    lineHeight: 18,
   },
   connectionText: {
     fontSize: 12,
     color: '#15803D',
-    marginBottom: 10,
+    marginBottom: 4,
   },
   connectionTextOffline: {
     color: '#B45309',
@@ -290,6 +403,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1F2937',
     marginBottom: 8,
+    marginTop: 8,
   },
   vehicleSelector: {
     minHeight: 52,
@@ -411,7 +525,20 @@ const styles = StyleSheet.create({
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
+  },
+  copyButton: {
+    minHeight: 50,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: '#E5E7EB',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  copyButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
   },
   input: {
     flex: 1,

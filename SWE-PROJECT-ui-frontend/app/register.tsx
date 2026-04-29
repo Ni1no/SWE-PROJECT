@@ -5,8 +5,8 @@ import {
   StyleSheet,
   TextInput,
   TouchableOpacity,
+  Pressable,
   ScrollView,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -19,21 +19,23 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string>('');
 
   const onRegister = async () => {
     if (!name.trim() || !email.trim() || !password.trim()) {
-      Alert.alert('Missing info', 'Name, email, and password are required.');
+      setError('Name, email, and password are required.');
       return;
     }
     if (password.length < 6) {
-      Alert.alert('Password', 'Use at least 6 characters.');
+      setError('Use at least 6 characters for password.');
       return;
     }
+    setError('');
     setLoading(true);
     const res = await register(name.trim(), email.trim(), password);
     setLoading(false);
     if (!res.ok) {
-      Alert.alert('Registration failed', res.message || 'Try again.');
+      setError(res.message || 'Registration failed. Try again.');
       return;
     }
     router.replace('/(tabs)');
@@ -41,9 +43,10 @@ export default function RegisterScreen() {
 
   return (
     <View style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="always">
         <Text style={styles.title}>Create account</Text>
         <Text style={styles.subtitle}>Set up your EZ Car Maintenance account.</Text>
+        {!!error && <Text style={styles.errorText}>{error}</Text>}
         <Text style={styles.label}>Name</Text>
         <TextInput
           style={styles.input}
@@ -71,13 +74,17 @@ export default function RegisterScreen() {
           placeholder="At least 6 characters"
           placeholderTextColor="#9CA3AF"
         />
-        <TouchableOpacity style={[styles.primary, loading && styles.disabled]} onPress={onRegister}>
+        <Pressable
+          style={[styles.primary, loading && styles.disabled]}
+          onPress={onRegister}
+          hitSlop={12}
+        >
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={styles.primaryText}>Create Account</Text>
           )}
-        </TouchableOpacity>
+        </Pressable>
         <TouchableOpacity style={styles.linkBtn} onPress={() => router.replace('/login')}>
           <Text style={styles.linkText}>Already have an account? Log in</Text>
         </TouchableOpacity>
@@ -91,6 +98,17 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 22, paddingTop: 40, paddingBottom: 30 },
   title: { fontSize: 28, fontWeight: '700', color: '#111827', marginBottom: 8 },
   subtitle: { fontSize: 14, color: '#6B7280', marginBottom: 24 },
+  errorText: {
+    fontSize: 13,
+    color: '#B91C1C',
+    marginBottom: 12,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
   label: { fontSize: 14, fontWeight: '600', color: '#1F2937', marginBottom: 8 },
   input: {
     minHeight: 52,

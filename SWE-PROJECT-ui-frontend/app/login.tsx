@@ -5,8 +5,8 @@ import {
   StyleSheet,
   TextInput,
   TouchableOpacity,
+  Pressable,
   ScrollView,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -18,27 +18,38 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string>('');
 
   const onLogin = async () => {
     if (!email.trim() || !password.trim()) {
-      Alert.alert('Missing info', 'Enter email and password.');
+      setError('Enter email and password.');
       return;
     }
+    setError('');
     setLoading(true);
     const res = await login(email.trim(), password);
     setLoading(false);
     if (!res.ok) {
-      Alert.alert('Login failed', res.message || 'Try again.');
+      setError(res.message || 'Login failed. Try again.');
       return;
     }
     router.replace('/(tabs)');
   };
 
+  const onCreateAccount = () => {
+    router.push('/register');
+  };
+
+  const onForgotPassword = () => {
+    router.push('/forgot-password');
+  };
+
   return (
     <View style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="always">
         <Text style={styles.title}>Welcome back</Text>
         <Text style={styles.subtitle}>Sign in to continue using EZ Car Maintenance.</Text>
+        {!!error && <Text style={styles.errorText}>{error}</Text>}
         <Text style={styles.label}>Email</Text>
         <TextInput
           style={styles.input}
@@ -61,12 +72,12 @@ export default function LoginScreen() {
         <TouchableOpacity style={[styles.primary, loading && styles.disabled]} onPress={onLogin}>
           {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Log In</Text>}
         </TouchableOpacity>
-        <TouchableOpacity style={styles.linkBtn} onPress={() => router.push('/register')}>
+        <Pressable style={styles.linkBtn} onPress={onCreateAccount} hitSlop={12}>
           <Text style={styles.linkText}>Create account</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.linkBtn} onPress={() => router.push('/forgot-password')}>
+        </Pressable>
+        <Pressable style={styles.linkBtn} onPress={onForgotPassword} hitSlop={12}>
           <Text style={styles.linkText}>Forgot password</Text>
-        </TouchableOpacity>
+        </Pressable>
       </ScrollView>
     </View>
   );
@@ -77,6 +88,17 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 22, paddingTop: 40, paddingBottom: 30 },
   title: { fontSize: 28, fontWeight: '700', color: '#111827', marginBottom: 8 },
   subtitle: { fontSize: 14, color: '#6B7280', marginBottom: 24 },
+  errorText: {
+    fontSize: 13,
+    color: '#B91C1C',
+    marginBottom: 12,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
   label: { fontSize: 14, fontWeight: '600', color: '#1F2937', marginBottom: 8 },
   input: {
     minHeight: 52,

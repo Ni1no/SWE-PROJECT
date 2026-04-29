@@ -1,15 +1,29 @@
 # EZ Car Maintenance — How to run (frontend + Python advisor)
 
+1st Terminal: cd "A:\Documents\SWE PROJECT"
+npm install
+npm start
 
+2nd Terminal:cd "A:\Documents\SWE PROJECT\SWE-PROJECT-ui-frontend"
+npm install
+npm run advisor-server
+
+3rd Terminal: cd "A:\Documents\SWE PROJECT\SWE-PROJECT-ui-frontend"
+npx expo start
+
+
+
+**Out of scope for this delivery (explicitly not required)**
+
+- **REQ-08** — Push / FCM notifications (not implemented).
+- **REQ-12 / REQ-13** — Custom reminder lead times; favorite shops with ratings (not implemented).
 
 **Still missing or only partial**
 
-- **REQ-08** — Push notifications (no Firebase Cloud Messaging wired up).
-- **REQ-09** — Dashboard is driven by **in-app state**, not a server-side reminder engine.
-- **REQ-10** — Maintenance log filter/search chips are UI-only (not wired to real filtering).
-- **REQ-12 / REQ-13** — Custom reminder lead times; favorite shops with ratings.
-- **REQ-17–REQ-23** — AI uses a **stub** `/ai/chat` handler, not Anthropic Claude; the AI tab is mostly static; no session persistence, share summary, or full follow-up behavior.
-- **Persistence** — Vehicles and service records live in **React context** (lost on fresh install unless you add API sync). Mongo is used for **user accounts** and password reset only.
+- **REQ-09** — **Done (partial):** Express `POST /reminders/compute` mirrors mileage urgency; the **Dashboard** tab merges summaries on focus when the user has a JWT. Local `syncVehicleFromServices` still drives state offline or without login.
+- **REQ-10** — **Done:** Maintenance log has chip filters **plus** a free-text search (vehicle, service, date, mileage, notes).
+- **REQ-17–REQ-23** — **Partial:** Express `/ai/chat` supports `sessionId`, short `history`, returns `suggestions`, and the **AI** tab shows suggestion chips, keeps session across sends, and **Copy** puts the last reply + disclaimer on the clipboard. A hosted LLM (e.g. Claude) is **not** integrated. The **Python** advisor remains the separate bridge for next-maintenance math.
+- **Persistence** — Vehicles and maintenance are stored per user in **AsyncStorage** (survives app restarts). MongoDB Atlas holds **accounts** and password-reset tokens.
 
 
 **Implemented in this repo (high level)**
@@ -28,11 +42,11 @@
 | Path | Role |
 |------|------|
 | `SWE-PROJECT-ui-frontend/` | Expo (React Native) UI |
-| `server.js` + `routes/` | Express API (auth, AI stub) |
+| `server.js` + `routes/` | Express API (auth, JWT, **AI advisory** `/ai/chat`, **mileage reminders** `/reminders/compute`, password reset) |
 | `models/User.js` | MongoDB user + password reset fields |
 | `advisor_server.mjs` | Node HTTP server (no extra npm deps) |
 | `advisor_cli.py` | Reads JSON stdin → calls advisor → JSON stdout |
-| `obd_maintenance_advisor.py` | Maintenance logic + `brand_reliability_lookup.csv` |
+| `obd_maintenance_advisor.py` | **Python** next-maintenance engine + `brand_reliability_lookup.csv` (separate from Express AI) |
 | `VINData.csv` | Optional NHTSA-style decode sample (used by Python helpers) |
 
 ## Prerequisites
@@ -42,7 +56,13 @@
 - **npm**
 - **MongoDB Atlas** (or local Mongo) only if you use **register / login / password reset**
 
-## 0) Optional — Express API (auth + reset + AI stub)
+### Two-system architecture (for demos)
+
+1. **Express** (`POST /ai/chat`, JWT required): user describes a symptom → server returns **guidance**, one of **Immediate / Within a Week / Monitor**, and a **disclaimer on every response**.
+2. **Python** (`advisor_server.mjs` → `advisor_cli.py` → `obd_maintenance_advisor.py`): odometer, age, make, **service history**, and **brand CSV** → which maintenance item is most due (shorter intervals for lower-reliability brands). The Expo **AI** tab calls Express first, then appends this next-service line when the bridge is up.
+3. **NHTSA VIN decode** (Expo → `vpic.nhtsa.dot.gov`) fills year/make/model → same profile fields the Python advisor uses via `vehicle.name` parsing.
+
+## 0) Optional — Express API (auth + reset + AI advisory)
 
 From the **repo root** (folder that contains `server.js`):
 
@@ -61,10 +81,12 @@ JWT_SECRET=your-long-random-secret
 Start the API:
 
 ```bash
-node server.js
+npm start
 ```
 
-You should see: `Server running on port 5000` (or your `PORT`). If `MONGO_URI` is wrong, Mongo logs an error but the process may still listen.
+(`npm start` runs `node server.js`.) You should see the Express server listening on `PORT` and a MongoDB Atlas connected message. If `MONGO_URI` is wrong, Mongo logs an error but the process may still listen.
+
+After login or register, the app stores the **JWT** locally and calls **`GET /auth/me`** on next launch so you stay signed in until the token expires or you sign out. Protected routes (Bearer token): **`POST /ai/chat`**, **`POST /reminders/compute`** (mileage summaries for dashboard sync).
 
 **Expo → API URL** (physical device or custom host): in `SWE-PROJECT-ui-frontend/.env`:
 

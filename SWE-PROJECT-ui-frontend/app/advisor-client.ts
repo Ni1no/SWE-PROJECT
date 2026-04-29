@@ -1,10 +1,17 @@
 /**
- * Calls Python obd_maintenance_advisor via advisor_server.mjs (parent folder).
- * REQ-07/REQ-08/REQ-09: mileage-based next service + urgency for dashboard.
- * Set EXPO_PUBLIC_ADVISOR_URL to override (e.g. physical device -> http://<LAN-IP>:3847).
+ * Python maintenance advisor — **separate** from Express `POST /ai/chat` symptom triage.
+ * Calls `obd_maintenance_advisor.py` via `advisor_server.mjs` (HTTP bridge in repo root).
+ * Inputs: odometer, vehicle age, make, last-service miles; brand reliability from CSV scales
+ * effective intervals. VIN decode → Add Vehicle fills year/make/model → parsed from `vehicle.name`.
+ *
+ * REQ-07/REQ-08/REQ-09: mileage-based next service + dashboard urgency.
+ * Set EXPO_PUBLIC_ADVISOR_URL (e.g. physical device -> http://<LAN-IP>:3847).
  */
 import { Platform } from 'react-native';
 import type { ReminderStatus } from './reminder-utils';
+import { parseVehicleProfileFromName } from './brand-reliability';
+
+export { parseVehicleProfileFromName };
 
 /** Subset of Vehicle — avoids circular import with data-context. */
 export type VehicleAdvisorSnapshot = {
@@ -12,6 +19,8 @@ export type VehicleAdvisorSnapshot = {
   name: string;
   currentMileageNumber: number;
   lastServiceMiles?: Record<string, number>;
+  /** From Add Vehicle — preferred over parsing year from `name` for age. */
+  modelYear?: number;
 };
 
 type AdvisorUrgency = 'overdue' | 'due_soon' | 'current';
@@ -108,29 +117,6 @@ function formatDueTextFromAdvisor(row: AdvisorNextRow): string {
   return `${Math.round(diff)} miles`;
 }
 
-/** Parse "YYYY Make Model…" from dashboard vehicle name. */
-export function parseVehicleProfileFromName(name: string): {
-  modelYear: number | null;
-  make: string;
-  model: string;
-} {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length < 2) {
-    return { modelYear: null, make: '', model: '' };
-  }
-  const y = parseInt(parts[0], 10);
-  const modelYear =
-    /^\d{4}$/.test(parts[0]) && Number.isFinite(y) && y >= 1900 && y <= 2100
-      ? y
-      : null;
-  if (!modelYear) {
-    return { modelYear: null, make: '', model: '' };
-  }
-  const make = parts[1] ?? '';
-  const model = parts.slice(2).join(' ') || make;
-  return { modelYear, make, model };
-}
-
 async function postNextMaintenance(
   body: Record<string, unknown>
 ): Promise<AdvisorNextRow | null> {
@@ -192,8 +178,18 @@ export async function fetchAdvisorPatchForVehicle(
         }
       : parseVehicleProfileFromName(vehicle.name);
 
-  const yNum = fromForm.modelYear;
-  const age = Number.isFinite(yNum) ? Math.max(0, refYear - (yNum as number)) : 5;
+  const storedY = vehicle.modelYear;
+  const parsedY = fromForm.modelYear;
+  const yNum =
+    storedY != null &&
+    Number.isFinite(storedY) &&
+    storedY >= 1900 &&
+    storedY <= 2100
+      ? storedY
+      : parsedY != null && Number.isFinite(parsedY) && parsedY >= 1900 && parsedY <= 2100
+        ? parsedY
+        : null;
+  const age = yNum != null ? Math.max(0, refYear - yNum) : 5;
 
   const lastServiceMiles =
     vehicle.lastServiceMiles && Object.keys(vehicle.lastServiceMiles).length > 0
@@ -206,7 +202,7 @@ export async function fetchAdvisorPatchForVehicle(
       vehicle_age_years: age,
       vehicle_make: fromForm.make || null,
       vehicle_model: fromForm.model || null,
-      model_year: Number.isFinite(yNum) ? yNum : null,
+      model_year: yNum,
       last_service_miles: lastServiceMiles,
     },
   });

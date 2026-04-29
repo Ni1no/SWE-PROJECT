@@ -1,4 +1,9 @@
-import React, { useMemo } from 'react';
+/**
+ * Dashboard — vehicle cards with **color-coded urgency** (overdue / due soon / good)
+ * driven by maintenance + advisor state. One React Native + Expo codebase serves iOS and Android.
+ */
+import React, { useCallback, useMemo, useRef } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -10,6 +15,8 @@ import {
 import { useRouter } from 'expo-router';
 import { useAppData } from '../data-context';
 import { useAuth } from '../auth-context';
+import { fetchMileageReminderSummaries } from '../reminder-client';
+import { resolveDashboardMileageUrgency } from '../reminder-utils';
 
 function getUrgencyColor(urgency: string) {
   switch (urgency) {
@@ -37,8 +44,48 @@ function getImportanceColor(label: string) {
 
 export default function DashboardScreen() {
   const router = useRouter();
-  const { vehicles, services } = useAppData();
-  const { user } = useAuth();
+  const { vehicles, services, mergeMileageReminderSummaries, refreshAdvisorPatches } =
+    useAppData();
+  const { user, getAccessToken } = useAuth();
+
+  const vehiclesRef = useRef(vehicles);
+  const servicesRef = useRef(services);
+  const mergeRef = useRef(mergeMileageReminderSummaries);
+  const getTokenRef = useRef(getAccessToken);
+  const refreshAdvisorRef = useRef(refreshAdvisorPatches);
+  vehiclesRef.current = vehicles;
+  servicesRef.current = services;
+  mergeRef.current = mergeMileageReminderSummaries;
+  getTokenRef.current = getAccessToken;
+  refreshAdvisorRef.current = refreshAdvisorPatches;
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!user) return;
+      let cancelled = false;
+      (async () => {
+        const result = await fetchMileageReminderSummaries(
+          vehiclesRef.current,
+          servicesRef.current,
+          () => getTokenRef.current()
+        );
+        if (cancelled) return;
+        if (result?.summaries?.length) {
+          mergeRef.current(result.summaries);
+        }
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => resolve());
+          });
+        });
+        if (cancelled) return;
+        await refreshAdvisorRef.current();
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [user])
+  );
 
   const onServicePress = (service: string, vehicle: string, dueText: string, serviceId?: string) => {
     const buttons = serviceId
@@ -61,8 +108,17 @@ export default function DashboardScreen() {
     const order = { overdue: 0, soon: 1, good: 2 } as const;
     return [...vehicles]
       .filter((vehicle) => vehicle.hasMaintenance && !!vehicle.nextService.trim())
-      .sort((a, b) => order[a.urgency] - order[b.urgency])
-      .map((vehicle) => {
+      .map((vehicle) => ({
+        vehicle,
+        mileageUrgency: resolveDashboardMileageUrgency(
+          vehicle.dueText,
+          vehicle.name,
+          vehicle.urgency,
+          vehicle.modelYear
+        ),
+      }))
+      .sort((a, b) => order[a.mileageUrgency] - order[b.mileageUrgency])
+      .map(({ vehicle, mileageUrgency }) => {
         const matchingRecord = services.find(
           (s) => s.vehicle === vehicle.name && s.service === vehicle.nextService
         );
@@ -71,7 +127,7 @@ export default function DashboardScreen() {
           service: vehicle.nextService,
           vehicle: vehicle.name,
           dueText: vehicle.dueText,
-          urgency: vehicle.urgency,
+          urgency: mileageUrgency,
         };
       });
   }, [vehicles, services]);
@@ -106,14 +162,24 @@ export default function DashboardScreen() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.vehicleScroll}
             >
-              {vehicles.map((vehicle) => (
+              {vehicles.map((vehicle) => {
+                const mileageUrgency =
+                  vehicle.hasMaintenance && vehicle.nextService
+                    ? resolveDashboardMileageUrgency(
+                        vehicle.dueText,
+                        vehicle.name,
+                        vehicle.urgency,
+                        vehicle.modelYear
+                      )
+                    : 'good';
+                return (
                 <View key={vehicle.id} style={styles.vehicleCard}>
                   <View style={styles.vehicleTopRow}>
                     <Text style={styles.vehicleName}>{vehicle.name}</Text>
                     <View
                       style={[
                         styles.urgencyDot,
-                        { backgroundColor: getUrgencyColor(vehicle.urgency) },
+                        { backgroundColor: getUrgencyColor(mileageUrgency) },
                       ]}
                     />
                   </View>
@@ -138,7 +204,7 @@ export default function DashboardScreen() {
                       <Text
                         style={[
                           styles.dueText,
-                          { color: getUrgencyColor(vehicle.urgency) },
+                          { color: getUrgencyColor(mileageUrgency) },
                         ]}
                       >
                         {vehicle.dueText}
@@ -150,7 +216,8 @@ export default function DashboardScreen() {
                     </Text>
                   )}
                 </View>
-              ))}
+              );
+              })}
             </ScrollView>
 
             <View style={styles.scrollIndicatorRow}>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,8 @@ import { useAppData } from '../data-context';
 
 export default function VehiclesScreen() {
   const router = useRouter();
-  const { vehicles } = useAppData();
+  const { vehicles, deleteVehicle } = useAppData();
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   return (
     <View style={styles.container}>
@@ -56,6 +57,52 @@ export default function VehiclesScreen() {
                       ? ` (${vehicle.advisorImportanceScore}/100)`
                       : ''}
                   </Text>
+                </View>
+              ) : null}
+
+              <View style={styles.actionRow}>
+                <TouchableOpacity
+                  style={styles.editBtn}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/edit-vehicle',
+                      params: { id: vehicle.id },
+                    })
+                  }
+                >
+                  <Text style={styles.editBtnText}>Edit</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.deleteBtn}
+                  onPress={() =>
+                    setConfirmDeleteId((prev) => (prev === vehicle.id ? null : vehicle.id))
+                  }
+                >
+                  <Text style={styles.deleteBtnText}>Delete</Text>
+                </TouchableOpacity>
+              </View>
+              {confirmDeleteId === vehicle.id ? (
+                <View style={styles.confirmCard}>
+                  <Text style={styles.confirmText}>
+                    Are you sure? This also removes maintenance records for {vehicle.name}.
+                  </Text>
+                  <View style={styles.confirmActions}>
+                    <TouchableOpacity
+                      style={styles.confirmCancelBtn}
+                      onPress={() => setConfirmDeleteId(null)}
+                    >
+                      <Text style={styles.confirmCancelText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.confirmDeleteBtn}
+                      onPress={() => {
+                        deleteVehicle(vehicle.id);
+                        setConfirmDeleteId(null);
+                      }}
+                    >
+                      <Text style={styles.confirmDeleteText}>Yes, Delete</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               ) : null}
             </View>
@@ -139,6 +186,81 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#111827',
     fontWeight: '500',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 8,
+  },
+  editBtn: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 12,
+    backgroundColor: '#DBEAFE',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  editBtnText: {
+    color: '#1D4ED8',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  deleteBtn: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 12,
+    backgroundColor: '#FEE2E2',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteBtnText: {
+    color: '#B91C1C',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  confirmCard: {
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    backgroundColor: '#FEF2F2',
+    borderRadius: 12,
+    padding: 12,
+  },
+  confirmText: {
+    color: '#7F1D1D',
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 8,
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  confirmCancelBtn: {
+    flex: 1,
+    minHeight: 38,
+    borderRadius: 10,
+    backgroundColor: '#E5E7EB',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  confirmCancelText: {
+    color: '#374151',
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  confirmDeleteBtn: {
+    flex: 1,
+    minHeight: 38,
+    borderRadius: 10,
+    backgroundColor: '#B91C1C',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  confirmDeleteText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13,
   },
   fab: {
     position: 'absolute',

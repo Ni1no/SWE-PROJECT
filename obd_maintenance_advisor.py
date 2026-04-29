@@ -2,6 +2,11 @@
 Next maintenance only: uses brand_reliability_lookup.csv and odometer/service history
 to pick the one maintenance item to do next (most overdue, else soonest due).
 
+This Python engine is a **separate process** from the Express AI symptom endpoint; the Expo app
+reaches it only through the small Node HTTP bridge (`advisor_server.mjs`). Less reliable brands
+get shorter effective intervals via the service factor. Year/make/model from NHTSA VIN decode
+flow into the same ServiceContext fields used here when the vehicle profile is filled.
+
 Aligned with EZ Car Maintenance requirements doc (Team 12, CS 3354 Spring 2026), scope:
 REQ-07 (service due from mileage recommendations), REQ-08 (~500 mi reminder window on
 the mileage side), REQ-09 / UI-04 / UI-06 (urgency for dashboard: overdue / due soon / current),
@@ -93,22 +98,59 @@ def compute_importance(
     urgency: MileageUrgency,
     service_factor: float,
     reliability_index: float,
+    remaining_miles: float,
+    due_soon_within_miles: float,
+    vehicle_age_years: float,
+    odometer_miles: float,
 ) -> tuple[float, str]:
     """
-    CSV-driven importance score/label for UI.
-    Higher for overdue items, older/less reliable vehicles (via service_factor and reliability index).
+    Mileage-first importance: comfortable remaining distance on a reliable make stays Low/Medium.
+    Brand and service-factor boosts scale with **stress** (overdue / close to due), so a routine
+    oil change with thousands of miles left does not read High/Critical.
+
+    **Critical** is reserved for overdue maintenance on **less reliable** brands (reliability
+    index below ~mid-tier), with a strong enough score; overdue on very reliable makes caps at High.
     """
-    urgency_points = {"current": 40.0, "due_soon": 70.0, "overdue": 92.0}[urgency]
-    sf_boost = min(12.0, max(0.0, (service_factor - 1.0) * 18.0))
-    reliability_boost = min(10.0, max(0.0, (1.0 - reliability_index) * 22.0))
-    score = min(100.0, urgency_points + sf_boost + reliability_boost)
-    if score >= 90:
-        return score, "Critical"
-    if score >= 72:
-        return score, "High"
-    if score >= 55:
-        return score, "Medium"
-    return score, "Low"
+    ri = max(0.35, min(1.0, float(reliability_index)))
+    sf = max(0.5, min(2.0, float(service_factor)))
+    w = max(50.0, float(due_soon_within_miles))
+    rem = float(remaining_miles)
+    age = max(0.0, float(vehicle_age_years))
+    odo = max(0.0, float(odometer_miles))
+    overdue_mi = max(0.0, -rem) if (urgency == "overdue" or rem < 0) else 0.0
+
+    if urgency == "overdue" or rem < 0:
+        stress = min(1.0, 0.35 + 0.65 * min(1.0, overdue_mi / 1500.0))
+        base = max(
+            46.0,
+            36.0 + min(36.0, 36.0 * min(1.0, overdue_mi / 1600.0)),
+        )
+    elif urgency == "due_soon":
+        x = min(1.0, max(0.0, rem / w))
+        close = 1.0 - x
+        stress = min(1.0, 0.28 + 0.72 * (close**1.1))
+        base = 20.0 + 50.0 * (close**1.18)
+    else:
+        extra = max(0.0, rem - w)
+        stress = max(0.0, 0.22 * (1.0 - min(1.0, extra / (10.0 * w))))
+        u = min(1.0, max(0.0, extra / (8.0 * w)))
+        base = 12.0 + 24.0 * (1.0 - u * 0.88)
+
+    sf_boost = min(5.0, max(0.0, (sf - 1.0) * 7.0)) * stress
+    reliability_boost = min(6.0, max(0.0, (1.0 - ri) * 14.0)) * stress
+    # Extra mileage/age context: older, higher-mileage vehicles get modest additive risk.
+    age_boost = min(2.5, (min(age, 20.0) / 20.0) * 2.5) * max(0.2, stress)
+    odometer_boost = min(2.5, (min(odo, 220000.0) / 220000.0) * 2.5) * max(0.2, stress)
+    score = min(100.0, base + sf_boost + reliability_boost + age_boost + odometer_boost)
+    rounded = round(score, 1)
+
+    if (urgency == "overdue" or rem < 0) and ri < 0.76 and score >= 76.0:
+        return rounded, "Critical"
+    if score >= 72.0:
+        return rounded, "High"
+    if score >= 44.0:
+        return rounded, "Medium"
+    return rounded, "Low"
 
 
 # --- Paths and CSV ---------------------------------------------------------------
@@ -127,7 +169,8 @@ def load_brand_rows(path: Path | None = None) -> list[dict[str, str]]:
 
 def load_due_soon_window_miles(path: Path | None = None) -> float:
     """
-    Read REQ-08 reminder window from obd_maintenance_metrics_catalog.csv notes when possible.
+    Read REQ-08 mileage reminder window from catalog notes when possible.
+    Must not pick unrelated numbers (e.g. \"5000 mi baseline\" in the same CSV row).
     Falls back to REMINDER_WITHIN_MILES if not found or unparsable.
     """
     p = path or _project_dir() / "obd_maintenance_metrics_catalog.csv"
@@ -138,10 +181,17 @@ def load_due_soon_window_miles(path: Path | None = None) -> float:
             for row in csv.DictReader(f):
                 key = str(row.get("metric_key") or "").strip().lower()
                 notes = str(row.get("notes") or "")
-                if key in {"service_factor_formula_notes", "service_factor"}:
-                    m = re.search(r"(\d+(?:\.\d+)?)\s*mi", notes, flags=re.IGNORECASE)
-                    if m:
-                        return float(m.group(1))
+                if key != "service_factor_formula_notes":
+                    continue
+                m = re.search(
+                    r"due-?soon\s+uses\s+~?\s*(\d+)\s*mi",
+                    notes,
+                    flags=re.IGNORECASE,
+                )
+                if m:
+                    n = float(m.group(1))
+                    if 50.0 <= n <= 3000.0:
+                        return n
     except (OSError, ValueError):
         return float(REMINDER_WITHIN_MILES)
     return float(REMINDER_WITHIN_MILES)
@@ -262,7 +312,7 @@ def lookup_brand_reliability(
 def compute_service_factor(
     vehicle_age_years: float,
     reliability_index: float,
-    k_age: float = 0.04,
+    k_age: float = 0.068,
     cap_low: float = 0.5,
     cap_high: float = 2.0,
 ) -> float:
@@ -325,7 +375,7 @@ def next_maintenance(
     *,
     brand_csv: Path | None = None,
     metrics_catalog_csv: Path | None = None,
-    k_age: float = 0.04,
+    k_age: float = 0.068,
     base_intervals_miles: dict[str, float] | None = None,
 ) -> NextMaintenance | None:
     """REQ-07 next due by mileage; REQ-09 ordering; None if no last_service_miles entries."""
@@ -378,6 +428,10 @@ def next_maintenance(
         urgency=urg,
         service_factor=sf,
         reliability_index=ri,
+        remaining_miles=remaining,
+        due_soon_within_miles=dynamic_due_soon_window,
+        vehicle_age_years=ctx.vehicle_age_years,
+        odometer_miles=odo,
     )
 
     return NextMaintenance(
@@ -412,7 +466,7 @@ def next_maintenance_from_vin_csv(
     odometer_miles: float,
     last_service_miles: dict[str, float | None],
     brand_csv: Path | None = None,
-    k_age: float = 0.04,
+    k_age: float = 0.068,
     base_intervals_miles: dict[str, float] | None = None,
     reference_year: int | None = None,
 ) -> NextMaintenance | None:

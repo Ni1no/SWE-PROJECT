@@ -1,8 +1,4 @@
-/**
- * Add Vehicle — optional **VIN decode** calls the public NHTSA vPIC API to fill year, make, and model.
- * Expo: same screen on iOS and Android.
- */
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -12,77 +8,71 @@ import {
   ScrollView,
   Alert,
   Keyboard,
-  ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAppData } from './data-context';
-import { decodeVinWithNhtsa, validateVinFormat } from './nhtsa-vin';
+import { parseVehicleProfileFromName } from './brand-reliability';
 
-export default function AddVehicleScreen() {
+export default function EditVehicleScreen() {
   const router = useRouter();
-  const { addVehicle } = useAppData();
+  const { id } = useLocalSearchParams<{ id?: string }>();
+  const { vehicles, updateVehicle } = useAppData();
+
+  const vehicle = useMemo(
+    () => vehicles.find((v) => v.id === String(id || '')),
+    [vehicles, id]
+  );
 
   const [year, setYear] = useState('');
   const [make, setMake] = useState('');
   const [model, setModel] = useState('');
   const [mileage, setMileage] = useState('');
   const [vin, setVin] = useState('');
-  const [vinLookupLoading, setVinLookupLoading] = useState(false);
 
-  const handleVinLookup = async () => {
-    const fmt = validateVinFormat(vin);
-    if (fmt) {
-      Alert.alert('VIN', fmt);
-      return;
-    }
-    setVinLookupLoading(true);
-    try {
-      const decoded = await decodeVinWithNhtsa(vin);
-      if (decoded.error) {
-        Alert.alert('NHTSA lookup', decoded.error);
-        return;
-      }
-      setYear(decoded.year);
-      setMake(decoded.make);
-      setModel(decoded.model);
-      Alert.alert(
-        'Vehicle loaded (REQ-02)',
-        'Year, make, and model were filled from NHTSA. Mileage reminders still use the app’s interval logic until you log services.'
-      );
-    } finally {
-      setVinLookupLoading(false);
-      Keyboard.dismiss();
-    }
-  };
+  useEffect(() => {
+    if (!vehicle) return;
+    const parsed = parseVehicleProfileFromName(vehicle.name);
+    setYear(
+      String(
+        vehicle.modelYear && Number.isFinite(vehicle.modelYear)
+          ? vehicle.modelYear
+          : parsed.modelYear ?? ''
+      )
+    );
+    setMake(parsed.make || '');
+    setModel(parsed.model || '');
+    setMileage(String(vehicle.mileage || '').replace(/\s*mi$/i, '').trim());
+    setVin(vehicle.vin === 'VIN not added' ? '' : vehicle.vin);
+  }, [vehicle]);
 
   const handleSave = () => {
+    if (!vehicle) {
+      Alert.alert('Vehicle not found', 'Could not load this vehicle record.');
+      return;
+    }
     if (!year.trim()) {
       Alert.alert('Missing Info', 'Please enter the vehicle year.');
       return;
     }
-
     if (!make.trim()) {
       Alert.alert('Missing Info', 'Please enter the vehicle make.');
       return;
     }
-
     if (!model.trim()) {
       Alert.alert('Missing Info', 'Please enter the vehicle model.');
       return;
     }
-
     if (!mileage.trim()) {
       Alert.alert('Missing Info', 'Please enter the current mileage.');
       return;
     }
-
     const numericMileage = Number(mileage.replace(/,/g, ''));
     if (Number.isNaN(numericMileage)) {
       Alert.alert('Invalid Mileage', 'Mileage must be a valid number.');
       return;
     }
 
-    addVehicle({
+    updateVehicle(vehicle.id, {
       year,
       make,
       model,
@@ -95,14 +85,13 @@ export default function AddVehicleScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.dimBackground} />
-
       <View style={styles.sheet}>
         <TouchableOpacity
           style={styles.handleTapArea}
           onPress={() => router.back()}
           activeOpacity={0.7}
           accessibilityRole="button"
-          accessibilityLabel="Close add vehicle popup"
+          accessibilityLabel="Close edit vehicle popup"
         >
           <View style={styles.handle} />
         </TouchableOpacity>
@@ -112,10 +101,8 @@ export default function AddVehicleScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <Text style={styles.title}>Add Vehicle</Text>
-          <Text style={styles.subtitle}>
-            Enter your vehicle information to start tracking maintenance
-          </Text>
+          <Text style={styles.title}>Edit Vehicle</Text>
+          <Text style={styles.subtitle}>Update this vehicle information</Text>
 
           <Text style={styles.label}>Year *</Text>
           <TextInput
@@ -172,27 +159,9 @@ export default function AddVehicleScreen() {
             returnKeyType="done"
             onSubmitEditing={Keyboard.dismiss}
           />
-          <TouchableOpacity
-            style={[styles.lookupBtn, vinLookupLoading && styles.lookupBtnDisabled]}
-            onPress={handleVinLookup}
-            disabled={vinLookupLoading}
-          >
-            {vinLookupLoading ? (
-              <ActivityIndicator color="#2563EB" />
-            ) : (
-              <Text style={styles.lookupBtnText}>Decode VIN (NHTSA)</Text>
-            )}
-          </TouchableOpacity>
-          <Text style={styles.helperVin}>
-            Fills year, make, and model from the official NHTSA decoder. Add mileage
-            yourself.
-          </Text>
 
           <View style={styles.buttonRow}>
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={() => router.back()}
-            >
+            <TouchableOpacity style={styles.cancelButton} onPress={() => router.back()}>
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
 
@@ -308,28 +277,5 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
-  },
-  lookupBtn: {
-    minHeight: 48,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#2563EB',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  lookupBtnDisabled: {
-    opacity: 0.6,
-  },
-  lookupBtnText: {
-    color: '#2563EB',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  helperVin: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginBottom: 8,
-    lineHeight: 17,
   },
 });

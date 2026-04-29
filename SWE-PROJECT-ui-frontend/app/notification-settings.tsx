@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Switch, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Switch, ScrollView, TouchableOpacity } from 'react-native';
+import { useRouter } from 'expo-router';
 
 export default function NotificationSettingsScreen() {
+  const router = useRouter();
   const [pushEnabled, setPushEnabled] = useState(true);
   const [dueSoonEnabled, setDueSoonEnabled] = useState(true);
   const [overdueEnabled, setOverdueEnabled] = useState(true);
@@ -9,6 +11,9 @@ export default function NotificationSettingsScreen() {
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+          <Text style={styles.backBtnText}>Back</Text>
+        </TouchableOpacity>
         <Text style={styles.title}>Notification Settings</Text>
         <Text style={styles.subtitle}>Configure reminder behavior for maintenance alerts.</Text>
 
@@ -32,6 +37,15 @@ export default function NotificationSettingsScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#F5F6F8' },
   content: { padding: 22 },
+  backBtn: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#E5E7EB',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 12,
+  },
+  backBtnText: { color: '#374151', fontSize: 14, fontWeight: '600' },
   title: { fontSize: 24, fontWeight: '700', color: '#111827', marginBottom: 8 },
   subtitle: { fontSize: 14, color: '#6B7280', marginBottom: 20 },
   row: {

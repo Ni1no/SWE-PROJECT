@@ -7,17 +7,16 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AppDataProvider } from './data-context';
 import { AuthProvider, useAuth } from './auth-context';
 
-export const unstable_settings = {
-  anchor: '(tabs)',
-};
-
 function RootNavigator() {
   const colorScheme = useColorScheme();
   const { isAuthenticated } = useAuth();
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack screenOptions={{ headerShown: false }}>
+      <Stack
+        initialRouteName={isAuthenticated ? '(tabs)' : 'login'}
+        screenOptions={{ headerShown: false }}
+      >
         {!isAuthenticated ? (
           <>
             <Stack.Screen name="login" options={{ headerShown: true, title: 'Log In' }} />
@@ -50,6 +49,14 @@ function RootNavigator() {
               options={{
                 headerShown: true,
                 title: 'Add Vehicle',
+                presentation: 'modal',
+              }}
+            />
+            <Stack.Screen
+              name="edit-vehicle"
+              options={{
+                headerShown: true,
+                title: 'Edit Vehicle',
                 presentation: 'modal',
               }}
             />
